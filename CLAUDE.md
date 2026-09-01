@@ -24,7 +24,7 @@ Take-home assignment for N5Deal — a working marketplace prototype for M&A oppo
 
 These are the things that will otherwise cost hours.
 
-1. **Better Auth cannot run in middleware.** `auth.api.getSession()` needs Prisma, which needs Node APIs, which don't exist in the Edge runtime. `middleware.ts` checks only for the presence of a session cookie (`getSessionCookie`). All role and status logic lives in server-side layouts and Server Actions.
+1. **Better Auth cannot run in the proxy layer.** Next 16 renamed `middleware.ts` → **`src/proxy.ts`** (same Edge runtime, same semantics; the old name still builds but warns). `auth.api.getSession()` needs Prisma, which needs Node APIs, which don't exist on the Edge. `proxy.ts` checks only for the presence of a session cookie (`getSessionCookie`). All role and status logic lives in server-side layouts and Server Actions.
 2. **Seed users must be created through the auth API.** `prisma.user.create()` with a password won't produce a login-able account — Better Auth stores its own hash format in `Account.password`. Use `auth.api.signUpEmail()`, then `prisma.user.update()` for `role` and `emailVerified`.
 3. **Money is `Int` (whole EUR), never `Decimal`.** Prisma's `Decimal` is a class instance and throws `Only plain objects can be passed to Client Components` when it crosses the RSC boundary. Format at render with `Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })`.
 4. **Supabase needs two connection strings.** `DATABASE_URL` = pooler on `:6543` with `?pgbouncer=true&connection_limit=1`; `DIRECT_URL` = `:5432` for migrations. In Prisma 7 these are wired in `prisma.config.ts`, not in the `datasource` block. Add `"postinstall": "prisma generate"` or Vercel builds with a stale client.
@@ -32,14 +32,16 @@ These are the things that will otherwise cost hours.
 6. **Form inputs are strings.** Use `z.coerce.number()`, never bare `z.number()`. For optional numbers use the `optionalInt` helper below — `z.coerce.number().optional()` turns `""` into `0`.
 7. **`revalidatePath` after every mutation**, otherwise the RSC cache serves stale lists.
 8. **Prisma client singleton** in `src/lib/db.ts` guarded by `globalThis` — dev hot reload otherwise exhausts connections.
-9. **`create-next-app` writes its own `CLAUDE.md`.** Never move/copy a scaffold over this directory with `-Force`; it will clobber this file.
+9. **Prisma 7 has no bundled query engine.** Connections go through a *driver adapter*: `new PrismaPg({ connectionString: process.env.DATABASE_URL })` passed as `adapter` to `PrismaClient`. Requires `@prisma/adapter-pg` + `pg`.
+10. **`create-next-app` writes its own `CLAUDE.md`** (a one-line `@AGENTS.md` pointer). Never move/copy a scaffold over this directory with `-Force`; it will clobber this file.
+11. **npm 11 blocks install scripts by default.** `prisma`, `@prisma/engines`, `esbuild` and `unrs-resolver` are approved in `package.json` → `allowScripts`. A new dependency with a postinstall hook will warn until it's approved too.
 
 ## Conventions
 
 - Default to Server Components. Every mutation is a Server Action; no REST route handlers except `/api/auth/[...all]` and `/api/ai/parse-query`.
 - Server Actions take a typed object, not `FormData`. React Hook Form already produces a validated object client-side; the action re-validates with the same Zod schema server-side.
 - Every mutation input is validated with Zod before it touches Prisma.
-- Access control has three layers: middleware (cookie present) → role layout (`requireRole()`) → Server Action (`requireRole()` again). A Server Action can be invoked directly, so the route guard alone is never enough.
+- Access control has three layers: `proxy.ts` (cookie present) → role layout (`requireRole()`) → Server Action (`requireRole()` again). A Server Action can be invoked directly, so the route guard alone is never enough.
 - List state (search, filters, sort, page) lives in `searchParams`, not client state — it survives refresh, is shareable, and lets the page stay a Server Component.
 - Folder layout: `src/app/(auth)/...`, `src/app/buyer/...`, `src/app/seller/...`, `src/app/manager/...`; shared primitives in `src/components/ui` (shadcn), domain components in `src/components/<domain>`; pure logic in `src/lib/`.
 
@@ -75,7 +77,7 @@ export async function requireRole(role: Role) {
 - `prisma.config.ts`
 - the `better-auth` version in `package.json` → **pinned here: 1.6.23**
 
-FishLog has **no `middleware.ts`** — ours is written from scratch (cookie-presence check via `getSessionCookie`).
+FishLog has **no `middleware.ts`/`proxy.ts`** — ours is written from scratch (cookie-presence check via `getSessionCookie`).
 
 **Rules:**
 
@@ -88,12 +90,16 @@ FishLog has **no `middleware.ts`** — ours is written from scratch (cookie-pres
 
 - `user.additionalFields`: `role`, `status`, `companyName` — declared in the Better Auth config **and** in `prisma/schema.prisma`
 - `session.cookieCache` enabled
-- `middleware.ts` — cookie-presence check only; all role/status logic lives in `requireRole()` in role layouts and Server Actions
+- `src/proxy.ts` — cookie-presence check only; all role/status logic lives in `requireRole()` in role layouts and Server Actions
 - seed script that creates users through `auth.api.signUpEmail()`
 
 ## Auth
 
-Better Auth generates `User`, `Session`, `Account`, `Verification` via `npx @better-auth/cli generate`. Don't hand-edit those beyond the `additionalFields` on `User` (`role`, `status`, `companyName`), which must be declared **both** in the Prisma schema and in the Better Auth config's `user.additionalFields` — otherwise they won't appear on `session.user`. Enable `session.cookieCache` to avoid a DB hit per request.
+Better Auth generates `User`, `Session`, `Account`, `Verification` via `npx @better-auth/cli generate`. Don't hand-edit those beyond the `additionalFields` on `User` (`role`, `status`, `companyName`), which must be declared **both** in the Prisma schema and in the Better Auth config's `user.additionalFields` — otherwise they won't appear on `session.user`. `role` and `status` carry `input: false` so they can never be set from a sign-up payload.
+
+On the client, `createAuthClient` needs `inferAdditionalFields<typeof auth>()` or the browser-side `session.user` type is missing those three fields even though the server sends them.
+
+`session.cookieCache` is enabled to avoid a DB hit per request, with **`maxAge: 60`** rather than the 5-minute default. The cache holds `status`, so a Manager's Suspend takes up to `maxAge` to bite on an already-open session; suspend/remove also deletes that user's `Session` rows so the session dies the moment the cookie cache lapses. A fresh sign-in is blocked immediately regardless.
 
 Seed users (same demo password, documented in the README):
 
@@ -173,18 +179,23 @@ model Session {
 }
 
 model Account {
-  id           String    @id
-  accountId    String
-  providerId   String
-  userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken  String?
-  refreshToken String?
-  idToken      String?
-  expiresAt    DateTime?
-  password     String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  // Shape taken verbatim from the working FishLog baseline. Note the token
+  // expiry columns are `accessTokenExpiresAt` / `refreshTokenExpiresAt`,
+  // NOT a single `expiresAt`, and `scope` is required by the adapter.
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  password              String?
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@map("account")
 }
@@ -195,6 +206,7 @@ model Verification {
   value      String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@map("verification")
 }
