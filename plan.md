@@ -35,12 +35,13 @@ Companion to `CLAUDE.md` (architecture, conventions, data model, known pitfalls)
 
 ### Phase 2 — Auth + role routing (1.5h)
 
-- [ ] Sign-in page (email + password) + quick-login buttons for the 3 seed users
+- [x] Sign-in page (email + password) + quick-login buttons for the 3 seed users — *`src/app/(auth)/sign-in`; the demo buttons sign in outright rather than filling the form, since a reviewer works through all three roles*
 - [x] `middleware.ts` — cookie presence only (`getSessionCookie`), redirect to `/sign-in`. No DB, no role logic. — *done early, in Phase 0, as `src/proxy.ts`*
-- [ ] `lib/auth-guard.ts` → `requireRole(role)`: fetches session, checks role and `status`, redirects. Used in role layouts **and** in every Server Action.
-- [ ] `app/buyer/layout.tsx`, `app/seller/layout.tsx`, `app/manager/layout.tsx` calling `requireRole()`
-- [ ] `/suspended` page for `status !== ACTIVE`
-- [ ] Shared app shell: header, role badge, sign-out
+- [x] `lib/auth-guard.ts` → `requireRole(role)`: fetches session, checks role and `status`, redirects. Used in role layouts **and** in every Server Action. — *also `requireUser()` and `getSessionUser()`. `homeFor()`/`safeNextPath()` live in `src/lib/routes.ts` instead — the sign-in form needs `homeFor` and `auth-guard.ts` pulls in Prisma, which must not reach the client bundle*
+- [x] `app/buyer/layout.tsx`, `app/seller/layout.tsx`, `app/manager/layout.tsx` calling `requireRole()`
+- [x] `/suspended` page for `status !== ACTIVE` — *distinguishes SUSPENDED from REMOVED; sits outside the proxy matcher so a suspended user isn't bounced in a loop*
+- [x] Shared app shell: header, role badge, sign-out — *`src/components/layout/app-shell.tsx` + per-role nav from `src/lib/nav-items.ts`*
+- [x] **Added, not in the original plan:** thin placeholder pages for the 9 routes the nav links to but Phases 3–6 still have to build (`src/components/layout/phase-placeholder.tsx`). Without them every nav link and every post-sign-in redirect 404s, and a broken guard is indistinguishable from a missing page. Each later phase deletes its placeholder and writes the real screen.
 
 ### Phase 3 — Buyer browse (the money screen) (3.5h)
 

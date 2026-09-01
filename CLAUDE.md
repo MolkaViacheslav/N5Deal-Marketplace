@@ -8,9 +8,11 @@ Persistent context for Claude Code in this repo. Read it before making changes. 
 
 ## Where this stands
 
-Phases 0 and 1 are done and deployed; **Phase 2 (auth + role routing) is next**. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why. The only Phase 0 item still open is **theme tokens**.
+Phases 0–2 are done and deployed; **Phase 3 (buyer browse) is next**. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why. The only Phase 0 item still open is **theme tokens**.
 
-What exists so far: the Better Auth + Prisma wiring, the full schema and seed, and a throwaway proof page at `src/app/page.tsx` that renders live row counts. There is no UI beyond that — no sign-in page, no role layouts, no `src/lib/auth-guard.ts` yet.
+What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, and the signed-in shell (header, per-role nav, role badge, sign-out).
+
+**The nine role routes are placeholders.** `src/app/{buyer,seller,manager}/**/page.tsx` all render `<PhasePlaceholder>` — routing, guards and chrome are real, the screens are not. Each phase from 3 onward replaces its own placeholder file. `src/app/page.tsx` is likewise a throwaway proof page until Phase 9.
 
 ## Operations
 
@@ -77,7 +79,11 @@ These are the things that will otherwise cost hours.
 11. **shadcn no longer ships a `form` component** for this style (`radix` base, `nova` preset — see `components.json`). `npx shadcn@latest add form` silently does nothing. The replacement is `field` (`Field`, `FieldLabel`, `FieldError`, `FieldGroup`, already installed in `src/components/ui/field.tsx`) — presentational only, so react-hook-form is wired by hand with `Controller`/`register` rather than through a `FormField` wrapper. Registry items need the namespace: `npx shadcn@latest add '@shadcn/<name>'`.
 12. **`create-next-app` writes its own `CLAUDE.md`** (a one-line `@AGENTS.md` pointer). Never move/copy a scaffold over this directory with `-Force`; it will clobber this file.
 13. **npm 11 blocks install scripts by default.** `prisma`, `@prisma/engines`, `esbuild` and `unrs-resolver` are approved in `package.json` → `allowScripts`. A new dependency with a postinstall hook will warn until it's approved too.
-14. **Never pipe a value into `vercel env add` from PowerShell.** `$value | vercel env add NAME production` prepends a UTF-8 BOM (`﻿`) to the stdin PowerShell hands the child process. It's invisible in `vercel env ls`, but `new URL("﻿https://...")` throws, and a BOM-prefixed connection string fails to parse — this took down every env var set this way in one shot (`Invalid base URL`, Prisma `Can't reach database server`). Use Bash: `printf '%s' "$value" | vercel env add NAME production`. To audit a suspect value: `vercel env pull .env.check --environment production --yes` then `xxd` the line — a real value starts `NEXT_PUBLIC_APP_URL="h...`, a corrupted one starts with the 3 bytes `ef bb bf` before the `h`.
+15. **`tsx` runs `.ts` here as CommonJS, so top-level `await` is a build error** (`Top-level await is currently not supported with the "cjs" output format`). `package.json` has no `"type": "module"`. Any script under `prisma/` must use `.then()/.finally()` chains, not top-level await — this is why `prisma/seed.ts` resolves `auth.$context` through a lazy getter.
+16. **`session.user.role` and `.status` are typed `string | null | undefined`.** `additionalFields` declared `required: false` widens them, even though both columns are non-nullable with defaults. Helpers that take them (`homeFor`) accept the loose type and fall back, rather than being called with a cast at each site.
+17. **Route-type generics (`PageProps<"/x">`, `LayoutProps<"/x">`) resolve only after Next regenerates `.next/types`.** A brand-new route makes `tsc --noEmit` fail with `Type '"/x"' does not satisfy the constraint '"/"'` until `next build` (or `next dev`) has run once. Build first, then trust the typecheck.
+18. **Better Auth rejects `POST /api/auth/*` without an `Origin` header** (403) and without `Content-Type: application/json` (415). Browsers send both, so this only bites when testing with `curl` — add `-H "Origin: http://localhost:3000" -H 'Content-Type: application/json'` or you will misdiagnose working CSRF protection as a broken endpoint.
+19. **Never pipe a value into `vercel env add` from PowerShell.** `$value | vercel env add NAME production` prepends a UTF-8 BOM (`﻿`) to the stdin PowerShell hands the child process. It's invisible in `vercel env ls`, but `new URL("﻿https://...")` throws, and a BOM-prefixed connection string fails to parse — this took down every env var set this way in one shot (`Invalid base URL`, Prisma `Can't reach database server`). Use Bash: `printf '%s' "$value" | vercel env add NAME production`. To audit a suspect value: `vercel env pull .env.check --environment production --yes` then `xxd` the line — a real value starts `NEXT_PUBLIC_APP_URL="h...`, a corrupted one starts with the 3 bytes `ef bb bf` before the `h`.
 
 ## Conventions
 
