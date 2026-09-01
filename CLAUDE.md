@@ -446,6 +446,25 @@ The only LLM call in the app. `POST /api/ai/parse-query` turns free text ("licen
 
 **Guards:** a manager cannot change their own status, and cannot suspend or remove another manager. Both checks live in the Server Action.
 
+## Theme
+
+Tokens live in `src/app/globals.css` (`:root` / `.dark`), oklch, shadcn's `radix`/`nova` preset as the base. Loosely follows the N5deal reference (`n5deal.com/all-listing`) rather than copying it — per the assignment, "you do not need to reproduce it 1:1":
+
+- **`--primary` / `--ring`**: a blue-violet indigo, `oklch(0.47 0.19 258)` light / `oklch(0.64 0.19 258)` dark. N5deal's accent sits around hue ~277 (more violet); ours is pulled to hue 258 (cooler, more blue) so it reads as the same family without being a clone. Used for CTAs, links, and the asking-price figure on asset cards.
+- **`--success` / `success` Badge variant**: new, not in shadcn's default set. N5deal shows "Active" / "Validated" in green and "Not active" in red — the red half already existed as `--destructive`; green didn't, so it was added the same way (`bg-success/10 text-success`, matching the existing `destructive` variant's soft-tint pattern rather than a solid fill).
+- **Surfaces stay true neutral** (chroma 0) — N5deal tints its field-chip backgrounds faintly blue; here the one saturated brand color carries the identity and gray stays gray. Simpler, and it's the deliberate "trochy inakshyi" (slightly different) requested when this was built.
+- **`--radius`**: 10px → 12px, closer to the reference's airier card corners.
+- Font stays Geist (`src/app/layout.tsx`) — not chasing the reference's typeface from a screenshot alone.
+
+**Verifying a token or component-style change:** `tsc`/`eslint`/`next build` don't catch a bad color or a contrast failure — the `--font-sans` self-reference from Phase 0 broke silently the same way, compiling cleanly while doing nothing. Start the dev server and screenshot with Playwright; don't just reason about oklch numbers on paper.
+
+```bash
+npm install --no-save --no-audit --no-fund playwright
+npx playwright install chromium --with-deps   # first time only
+```
+
+Module resolution is relative to the script's own path, not `cwd` — a driver script placed outside the project (e.g. the scratchpad) won't find a `--no-save` install in `node_modules`. Drop it in the project (e.g. `prisma/_shoot.js`, gitignored-by-convention-only — delete it after) and run it from there. A throwaway route works the same way: Next's `_folder` naming makes a route **private** (unrouted) — use a plain folder name, and delete it before committing. `npm uninstall --no-save playwright` after; confirm with `git status` that neither the temp route nor the lockfile leaked into the diff.
+
 ## Inquiry (contact flow)
 
 "Contact Buyer" / "Contact Seller" creates a single `Inquiry` record (message + timestamp), not a chat thread. Each role sees Sent / Received lists. No read state, no in-thread replies — a deliberate scope cut.
