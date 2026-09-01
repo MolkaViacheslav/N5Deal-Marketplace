@@ -6,6 +6,44 @@ Persistent context for Claude Code in this repo. Read it before making changes. 
 
 `AGENTS.md` (referenced above) is generated and re-added by `next dev` — it is not hand-written; leave it alone.
 
+## Where this stands
+
+Phases 0 and 1 are done and deployed; **Phase 2 (auth + role routing) is next**. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why. The only Phase 0 item still open is **theme tokens**.
+
+What exists so far: the Better Auth + Prisma wiring, the full schema and seed, and a throwaway proof page at `src/app/page.tsx` that renders live row counts. There is no UI beyond that — no sign-in page, no role layouts, no `src/lib/auth-guard.ts` yet.
+
+## Operations
+
+| | |
+|---|---|
+| Repo | `github.com/MolkaViacheslav/N5Deal-Marketplace` (branch `main`) |
+| Vercel project | `molka2/n5deal-marketplace` — auto-deploys on push to `main` |
+| Production | https://n5deal-marketplace-three.vercel.app |
+| Database | Supabase, region `eu-central-1` |
+
+> [!WARNING]
+> **Local development and production share one Supabase database.** There is no separate dev instance. `npm run db:seed` **truncates every table** — running it casually wipes the live demo. It is safe today only because the demo data is disposable; treat it as a destructive command, and never point it at anything else.
+
+Migrations are applied **manually from a local machine** (`npm run db:migrate`). The Vercel build only runs `prisma generate` via `postinstall` — there is no `migrate deploy` step in CI, so a schema change is not live until someone runs the migration by hand.
+
+Environment variables on Vercel:
+
+| Variable | production | preview | development |
+|---|:---:|:---:|:---:|
+| `DATABASE_URL` | ✓ | ✓ | ✓ |
+| `DIRECT_URL` | ✓ | ✓ | ✓ |
+| `BETTER_AUTH_SECRET` | ✓ | ✓ | ✓ |
+| `BETTER_AUTH_URL` | ✓ | — | — |
+| `NEXT_PUBLIC_APP_URL` | ✓ | — | — |
+
+The two URL variables are deliberately production-only: preview deployments get a fresh hostname each time, so a pinned URL would break auth there. Left unset, Better Auth derives the origin from the incoming request and the auth client falls back to same-origin — which is correct for previews. Do not "fix" this by setting them for preview.
+
+Locally, copy `.env.example` → `.env` and fill it in; `.env` is gitignored *and* `.vercelignore`d, because `vercel deploy` uploads the working directory rather than the git tree. (`.env.example` itself needs the `!.env.example` negation in `.gitignore` to survive the `.env*` pattern.)
+
+Commands: `npm run dev` · `build` · `lint` · `test` (Vitest) · `db:migrate` · `db:seed` · `db:studio`.
+
+Tooling state on the original machine, in case it needs redoing under a different account: the `vercel` CLI is installed globally via npm and logged in as `molkaviacheslav` (`vercel whoami`; re-auth with `vercel logout && vercel login`). Pushes to GitHub go through Git Credential Manager. The `gh` CLI was installed but **never** successfully authenticated — nothing depends on it.
+
 ## Project
 
 Take-home assignment for N5Deal — a working marketplace prototype for M&A opportunities and financial assets, with three roles (Buyer / Seller / Platform Manager), within a ~24h effort budget. Not production-ready; optimized for demonstrating product and engineering judgment on an intentionally under-specified brief.
@@ -25,17 +63,21 @@ Take-home assignment for N5Deal — a working marketplace prototype for M&A oppo
 These are the things that will otherwise cost hours.
 
 1. **Better Auth cannot run in the proxy layer.** Next 16 renamed `middleware.ts` → **`src/proxy.ts`** (same Edge runtime, same semantics; the old name still builds but warns). `auth.api.getSession()` needs Prisma, which needs Node APIs, which don't exist on the Edge. `proxy.ts` checks only for the presence of a session cookie (`getSessionCookie`). All role and status logic lives in server-side layouts and Server Actions.
-2. **Seed users must be created through the auth API.** `prisma.user.create()` with a password won't produce a login-able account — Better Auth stores its own hash format in `Account.password`. Use `auth.api.signUpEmail()`, then `prisma.user.update()` for `role` and `emailVerified`.
+2. **Seed users must be created through Better Auth, and `signUpEmail()` is closed.** `prisma.user.create()` with a password won't produce a login-able account — Better Auth keeps its own scrypt hash in `Account.password`. And because self-registration is enforced off (`disableSignUp: true`), `auth.api.signUpEmail()` throws too. The seed uses the layer underneath: `const ctx = await auth.$context`, then `ctx.internalAdapter.createUser({...})` + `ctx.internalAdapter.linkAccount({ userId, providerId: "credential", accountId: user.id, password: await ctx.password.hash(pw) })`. That is exactly what the sign-up endpoint calls once past its own guard. `role`/`status` can be passed straight into `createUser` — the `input: false` flag only gates the HTTP payload.
 3. **Money is `Int` (whole EUR), never `Decimal`.** Prisma's `Decimal` is a class instance and throws `Only plain objects can be passed to Client Components` when it crosses the RSC boundary. Format at render with `Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })`.
-4. **Supabase needs two connection strings.** `DATABASE_URL` = pooler on `:6543` with `?pgbouncer=true&connection_limit=1`; `DIRECT_URL` = `:5432` for migrations. In Prisma 7 these are wired in `prisma.config.ts`, not in the `datasource` block. Add `"postinstall": "prisma generate"` or Vercel builds with a stale client.
-5. **Next.js 16: `params` and `searchParams` are Promises.** Always `const { id } = await params;`.
-6. **Form inputs are strings.** Use `z.coerce.number()`, never bare `z.number()`. For optional numbers use the `optionalInt` helper below — `z.coerce.number().optional()` turns `""` into `0`.
-7. **`revalidatePath` after every mutation**, otherwise the RSC cache serves stale lists.
-8. **Prisma client singleton** in `src/lib/db.ts` guarded by `globalThis` — dev hot reload otherwise exhausts connections.
-9. **Prisma 7 has no bundled query engine.** Connections go through a *driver adapter*: `new PrismaPg({ connectionString: process.env.DATABASE_URL })` passed as `adapter` to `PrismaClient`. Requires `@prisma/adapter-pg` + `pg`.
-10. **`create-next-app` writes its own `CLAUDE.md`** (a one-line `@AGENTS.md` pointer). Never move/copy a scaffold over this directory with `-Force`; it will clobber this file.
-11. **npm 11 blocks install scripts by default.** `prisma`, `@prisma/engines`, `esbuild` and `unrs-resolver` are approved in `package.json` → `allowScripts`. A new dependency with a postinstall hook will warn until it's approved too.
-12. **Never pipe a value into `vercel env add` from PowerShell.** `$value | vercel env add NAME production` prepends a UTF-8 BOM (`﻿`) to the stdin PowerShell hands the child process. It's invisible in `vercel env ls`, but `new URL("﻿https://...")` throws, and a BOM-prefixed connection string fails to parse — this took down every env var set this way in one shot (`Invalid base URL`, Prisma `Can't reach database server`). Use Bash: `printf '%s' "$value" | vercel env add NAME production`. To audit a suspect value: `vercel env pull .env.check --environment production --yes` then `xxd` the line — a real value starts `NEXT_PUBLIC_APP_URL="h...`, a corrupted one starts with the 3 bytes `ef bb bf` before the `h`.
+4. **Supabase needs two connection strings, and the "direct" one probably won't work.** `DATABASE_URL` = Transaction Pooler on `:6543` with `?pgbouncer=true&connection_limit=1` (runtime). `DIRECT_URL` = session-scoped connection for migrations. In Prisma 7 both are wired in `prisma.config.ts`, not in the `datasource` block. Add `"postinstall": "prisma generate"` or Vercel builds with a stale client.
+
+   **The trap:** Supabase's direct host `db.<ref>.supabase.co:5432` publishes an **AAAA (IPv6) record only**. On an IPv4-only network `prisma migrate` dies with `P1001: Can't reach database server`, and the message points at the host as if it were down. Use the **Session Pooler** instead — same pooler host as `DATABASE_URL`, port `:5432`, no `pgbouncer` flag. It is IPv4-reachable and, unlike the Transaction Pooler on `:6543`, supports the session-scoped connections and advisory locks migrations need. Diagnose with `Resolve-DnsName db.<ref>.supabase.co` (AAAA only = this problem).
+5. **A Prisma read does not make a route dynamic.** Next only auto-detects `fetch`, `headers()`, `cookies()`, `searchParams` etc. A page that only calls `prisma.*` gets **statically prerendered at build time**: the data freezes at build, and the build itself starts requiring DB access (a Supabase hiccup then fails the deploy). Any page reading live data needs `export const dynamic = "force-dynamic";`. Check `next build` output — it must say `ƒ (Dynamic)`, not `○ (Static)`. This applies to every list and detail page in Phases 3–6.
+6. **Next.js 16: `params` and `searchParams` are Promises.** Always `const { id } = await params;`.
+7. **Form inputs are strings.** Use `z.coerce.number()`, never bare `z.number()`. For optional numbers use the `optionalInt` helper below — `z.coerce.number().optional()` turns `""` into `0`.
+8. **`revalidatePath` after every mutation**, otherwise the RSC cache serves stale lists.
+9. **Prisma client singleton** in `src/lib/db.ts` guarded by `globalThis` — dev hot reload otherwise exhausts connections.
+10. **Prisma 7 has no bundled query engine.** Connections go through a *driver adapter*: `new PrismaPg({ connectionString: process.env.DATABASE_URL })` passed as `adapter` to `PrismaClient`. Requires `@prisma/adapter-pg` + `pg`.
+11. **shadcn no longer ships a `form` component** for this style (`radix` base, `nova` preset — see `components.json`). `npx shadcn@latest add form` silently does nothing. The replacement is `field` (`Field`, `FieldLabel`, `FieldError`, `FieldGroup`, already installed in `src/components/ui/field.tsx`) — presentational only, so react-hook-form is wired by hand with `Controller`/`register` rather than through a `FormField` wrapper. Registry items need the namespace: `npx shadcn@latest add '@shadcn/<name>'`.
+12. **`create-next-app` writes its own `CLAUDE.md`** (a one-line `@AGENTS.md` pointer). Never move/copy a scaffold over this directory with `-Force`; it will clobber this file.
+13. **npm 11 blocks install scripts by default.** `prisma`, `@prisma/engines`, `esbuild` and `unrs-resolver` are approved in `package.json` → `allowScripts`. A new dependency with a postinstall hook will warn until it's approved too.
+14. **Never pipe a value into `vercel env add` from PowerShell.** `$value | vercel env add NAME production` prepends a UTF-8 BOM (`﻿`) to the stdin PowerShell hands the child process. It's invisible in `vercel env ls`, but `new URL("﻿https://...")` throws, and a BOM-prefixed connection string fails to parse — this took down every env var set this way in one shot (`Invalid base URL`, Prisma `Can't reach database server`). Use Bash: `printf '%s' "$value" | vercel env add NAME production`. To audit a suspect value: `vercel env pull .env.check --environment production --yes` then `xxd` the line — a real value starts `NEXT_PUBLIC_APP_URL="h...`, a corrupted one starts with the 3 bytes `ef bb bf` before the `h`.
 
 ## Conventions
 
@@ -92,7 +134,7 @@ FishLog has **no `middleware.ts`/`proxy.ts`** — ours is written from scratch (
 - `user.additionalFields`: `role`, `status`, `companyName` — declared in the Better Auth config **and** in `prisma/schema.prisma`
 - `session.cookieCache` enabled
 - `src/proxy.ts` — cookie-presence check only; all role/status logic lives in `requireRole()` in role layouts and Server Actions
-- seed script that creates users through `auth.api.signUpEmail()`
+- seed script that creates users through `auth.$context.internalAdapter` (see pitfall 2 — `signUpEmail()` is closed by `disableSignUp`)
 
 ## Auth
 
@@ -102,13 +144,15 @@ On the client, `createAuthClient` needs `inferAdditionalFields<typeof auth>()` o
 
 `session.cookieCache` is enabled to avoid a DB hit per request, with **`maxAge: 60`** rather than the 5-minute default. The cache holds `status`, so a Manager's Suspend takes up to `maxAge` to bite on an already-open session; suspend/remove also deletes that user's `Session` rows so the session dies the moment the cookie cache lapses. A fresh sign-in is blocked immediately regardless.
 
-Seed users (same demo password, documented in the README):
+The three demo logins the README will hand a reviewer — password **`demo1234`** for every seeded account:
 
 - `buyer@demo.com` — `BUYER`
 - `seller@demo.com` — `SELLER`
 - `manager@demo.com` — `MANAGER`
 
 The sign-in page has quick-login buttons for these three alongside the normal form.
+
+The seed creates **12 users in total**, not 3: the marketplace needs populated lists. Alongside the three above there are 2 more sellers (`seller.lisbon@`, `seller.tallinn@`) and 7 more buyers (`buyer.hansen@`, `.moreau@`, `.rossi@`, `.novak@`, `.okafor@`, `.silva@`, `.zielinska@`), all `@demo.com` with the same password. They exist so `/seller/buyers` and the manager tables have real rows and so match scores show a spread.
 
 ## Data Model (Prisma)
 
@@ -411,7 +455,12 @@ The only LLM call in the app. `POST /api/ai/parse-query` turns free text ("licen
 
 ## Seed data
 
-3 users (one per role), ~15 assets across all 3 categories and ≥5 countries / ≥6 industries with a wide price spread, ~8 buyer profiles with varied industries/regions/budgets — enough that Smart Matching shows a visible spread of scores rather than all 100% or all 0%. Users must be created via `auth.api.signUpEmail()`.
+As built: 12 users (1 manager, 3 sellers, 8 buyers), 18 assets across all 3 categories / 9 countries / 10 industries with a wide price spread, 8 buyer profiles, 4 inquiries and 1 audit-log row — enough that Smart Matching shows a visible spread of scores rather than all 100% or all 0%. Users must be created via `auth.$context.internalAdapter`, never `prisma.user.create()` (pitfall 2).
+
+Two things in the seed exist for reasons that are not obvious from reading it:
+
+- `assertTaxonomy()` runs before **any** insert and throws if a seeded country/industry falls outside `src/lib/taxonomy.ts`. Such a row would exist but be unreachable through the filter bar, which reads as a broken filter rather than bad data.
+- Every row gets an explicit, spread-out `createdAt`. Left to `now()` they all land on the same millisecond and "latest activity" ordering on `/manager` comes back arbitrary.
 
 ## Key assumptions (full reasoning belongs in the README)
 

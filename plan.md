@@ -28,7 +28,7 @@ Companion to `CLAUDE.md` (architecture, conventions, data model, known pitfalls)
 - [x] Full Prisma schema per `CLAUDE.md`
 - [x] `prisma migrate dev`
 - [x] `prisma/seed.ts`:
-  - users created via `auth.api.signUpEmail()` (NOT `prisma.user.create` — see `CLAUDE.md` → Pitfalls), then patched with `role` / `emailVerified: true`
+  - users created via `auth.api.signUpEmail()` (NOT `prisma.user.create` — see `CLAUDE.md` → Pitfalls), then patched with `role` / `emailVerified: true` — *changed: self-registration is now enforced off (`disableSignUp: true`), which closes `signUpEmail()` too, so the seed uses `auth.$context.internalAdapter` and sets `role`/`status` directly, no patch step*
   - ~15 assets across all 3 categories, ≥5 countries, ≥6 industries, wide price spread — *18 assets, 9 countries, 10 industries*
   - ~8 buyer profiles with varied industries/regions/budgets so match scores land between 0 and 100, not all-or-nothing
 - [x] Run seed against the deployed DB too — *same Supabase instance backs both local dev and the Vercel deployment, so one seed run covers both*
