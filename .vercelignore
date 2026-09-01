@@ -1,0 +1,6 @@
+# Belt-and-suspenders: .env is already in .gitignore, but `vercel deploy`
+# uploads the local directory, not the git tree — make sure a locally-filled
+# .env (with real Supabase credentials) is never bundled into a deployment.
+.env
+.env.local
+.env*.local
