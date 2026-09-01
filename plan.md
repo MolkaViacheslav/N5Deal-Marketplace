@@ -1,0 +1,137 @@
+# plan.md — Implementation Roadmap (v2)
+
+Companion to `CLAUDE.md` (architecture, conventions, data model, known pitfalls) and `assignment.md` (original brief). Total budget: ~24h.
+
+## Ordering principles
+
+1. **Deploy the walking skeleton in Phase 0.** Supabase pooling, `prisma generate` on Vercel and env vars are the things that break, and they must break at hour 2, not hour 22.
+2. **Buyer browse before Seller forms.** `/buyer/assets` is the screen a reviewer opens first and compares to `n5deal.com/all-listing`. Build it early on seeded data.
+3. **Every phase ends deployable.** Push after each phase; never accumulate a big unverified diff.
+
+---
+
+### Phase 0 — Setup + walking skeleton (2h)
+
+- [ ] `create-next-app` (TypeScript, App Router, Tailwind, ESLint)
+- [ ] `shadcn/ui` init + base components (button, card, input, select, dialog, table, badge, form, tabs, sheet, sonner)
+- [ ] Supabase project; set **both** `DATABASE_URL` (pooler `:6543`, `?pgbouncer=true&connection_limit=1`) and `DIRECT_URL` (`:5432`)
+- [ ] `"postinstall": "prisma generate"` in `package.json`
+- [ ] Prisma init + singleton client in `lib/db.ts`
+- [ ] Port the Better Auth baseline from `FishLog` (see `CLAUDE.md` → Reference project): `lib/auth.ts`, `lib/auth-client.ts`, `app/api/auth/[...all]/route.ts`, auth models in `schema.prisma`, `middleware.ts`. **Pin the same `better-auth` version.**
+- [ ] Add on top of it: `user.additionalFields` (`role`, `status`, `companyName`) in both the config and the schema, `session.cookieCache`, middleware reduced to a cookie-presence check
+- [ ] Verify sign-in works end to end before touching the domain model (`cli generate` should not be needed — the models come from the baseline)
+- [ ] Theme tokens (colors/typography loosely matching the N5Deal reference)
+- [ ] **Deploy to Vercel now**: one page that reads one row from the DB. Do not proceed until the deployed URL renders it.
+
+### Phase 1 — Data model + seed (2h)
+
+- [ ] Full Prisma schema per `CLAUDE.md`
+- [ ] `prisma migrate dev`
+- [ ] `prisma/seed.ts`:
+  - users created via `auth.api.signUpEmail()` (NOT `prisma.user.create` — see `CLAUDE.md` → Pitfalls), then patched with `role` / `emailVerified: true`
+  - ~15 assets across all 3 categories, ≥5 countries, ≥6 industries, wide price spread
+  - ~8 buyer profiles with varied industries/regions/budgets so match scores land between 0 and 100, not all-or-nothing
+- [ ] Run seed against the deployed DB too
+
+### Phase 2 — Auth + role routing (1.5h)
+
+- [ ] Sign-in page (email + password) + quick-login buttons for the 3 seed users
+- [ ] `middleware.ts` — cookie presence only (`getSessionCookie`), redirect to `/sign-in`. No DB, no role logic.
+- [ ] `lib/auth-guard.ts` → `requireRole(role)`: fetches session, checks role and `status`, redirects. Used in role layouts **and** in every Server Action.
+- [ ] `app/buyer/layout.tsx`, `app/seller/layout.tsx`, `app/manager/layout.tsx` calling `requireRole()`
+- [ ] `/suspended` page for `status !== ACTIVE`
+- [ ] Shared app shell: header, role badge, sign-out
+
+### Phase 3 — Buyer browse (the money screen) (3.5h)
+
+- [ ] `components/asset/asset-card.tsx` — badges (category, business status, country), field grid, price, tags. Match the reference layout.
+- [ ] `/buyer/assets` — server-side list with filters via `searchParams`: search, country, category, industry, price range
+- [ ] Filter bar as a Client Component writing to `searchParams` (URL is the state → survives refresh, shareable, no client store)
+- [ ] `/buyer/assets/[id]` — detail page, category-specific block, seller info (`await params`)
+- [ ] Empty state when filters match nothing
+
+### Phase 4 — Buyer profile + inquiries (2h)
+
+- [ ] `/buyer/profile` — create/edit `BuyerProfile` (industries, regions, budget, description)
+- [ ] "Contact Seller" dialog on the detail page → `createInquiry` Server Action
+- [ ] `/buyer/inquiries` — Sent / Received tabs
+
+### Phase 5 — Seller flows (3h)
+
+- [ ] `/seller/assets` — own listings table, status badges
+- [ ] New/Edit asset — **single form**, category `Select` at the top, conditional block via `watch("category")`. Zod discriminated union + `z.coerce`. `sanitizeByCategory()` before update.
+- [ ] `/seller/buyers` — buyer list + filters (industry, region, budget)
+- [ ] `/seller/buyers/[id]` — profile view + "Contact Buyer"
+- [ ] `/seller/inquiries` — Sent / Received
+
+### Phase 6 — Manager flows (1.5h)
+
+- [ ] `/manager` — counters + latest audit-log entries
+- [ ] `/manager/participants` — table, search/filter by role/status, Suspend / Remove / Reactivate
+- [ ] `/manager/assets` — table, search/filter, Suspend / Remove
+- [ ] Seller status change cascades to their assets in one Prisma transaction
+- [ ] Guards: a manager cannot suspend/remove themselves or another manager
+- [ ] `logAction()` writes an `AuditLog` row inside the same transaction
+
+### Phase 7 — Smart Matching (1.5h)
+
+- [ ] `lib/matching.ts` → `computeMatchScore(profile, asset): number` (pure)
+- [ ] Vitest + ~6 unit tests: full match, zero match, partial, missing budget bounds, empty arrays, price on the boundary
+- [ ] Match badge on asset cards (buyer side) and buyer cards (seller side)
+- [ ] "Recommended for you" section + "Best match" sort
+- [ ] No-profile fallback: hide badges, show "complete your profile" prompt
+
+### Phase 8 — AI search (1.5h)
+
+- [ ] `POST /api/ai/parse-query` — free-text → `{ search?, country?, industry?, category?, priceMin?, priceMax? }` as strict JSON, validated with Zod
+- [ ] Wire it into the existing buyer filter bar: parsed values simply populate `searchParams`, so the whole downstream path is already built and tested
+- [ ] Fallback on error/timeout/invalid JSON: treat the input as a plain text search, show a small "AI unavailable, using text search" note. **Demo must never break because of this feature.**
+- [ ] Two example chips under the input so a reviewer can try it in one click
+
+### Phase 9 — Polish (2h)
+
+- [ ] Loading states (`loading.tsx` + skeletons on the two list pages)
+- [ ] Toasts on every mutation; `revalidatePath` after every Server Action
+- [ ] Empty states everywhere (no assets, no inquiries, no profile)
+- [ ] `error.tsx` + `not-found.tsx`
+- [ ] Responsive pass (cards → single column, tables → horizontal scroll)
+
+### Phase 10 — README + final deploy (2h)
+
+- [ ] README: setup, seed credentials, key technical decisions, assumptions, AI tools used, what's next
+- [ ] Short architecture section — folder layout, three-layer access control, why Server Actions over route handlers, why deterministic matching + one LLM feature
+- [ ] Final deploy + smoke test all 3 roles on the deployed URL, in an incognito window
+- [ ] Re-read `assignment.md` line by line and tick off every requirement
+
+### Buffer (1.5h)
+
+Reserved for bugs surfaced in Phases 3–8.
+
+## Cut order if time runs short
+
+Cut strictly from the bottom:
+
+1. `/seller/buyers` filters → plain list
+2. AI search (Phase 8) → the deterministic matching still covers "Smart Filtering"
+3. `AuditLog` UI on `/manager` (keep the writes — they're two lines)
+4. "Recommended for you" section → keep just the badges and the sort
+
+**Never cut:** buyer browse + filters, the asset form, manager suspend/remove, README.
+
+## Stretch (only if everything above is done)
+
+- Self-registration flow
+- EN/UA switch: `lang` cookie + `dictionaries/{en,uk}.ts` + `getDictionary()` in server components, no locale routing
+- Tests beyond `computeMatchScore` (Zod schema branches, `sanitizeByCategory`)
+
+## Assumptions log (condensed — full reasoning goes in the README)
+
+1. Auth: full Better Auth + 3 seeded users, not a no-login role switcher.
+2. `Asset` fields aren't in the brief — modeled from its "M&A opportunities and financial assets" framing, not copied 1:1 from the narrower reference site.
+3. `Asset.category` (License / Operating Business / Stake) added — not on the reference site, needed because the written brief is broader than license trading.
+4. Contact flow = a single `Inquiry` record, not live chat.
+5. The brief gives a profile to Buyer only — Seller gets one optional `companyName` field instead of a full table.
+6. `SUSPENDED` = reversible soft block, `REMOVED` = soft delete; both cascade to a Seller's assets at the application level.
+7. Money is `Int` in whole EUR, single currency, no conversion.
+8. View counters / favourites from the reference site excluded — not in the written brief.
+9. Matching is deterministic and rule-based so it's reproducible during review; the one LLM feature (query parsing) is additive and degrades to plain search.

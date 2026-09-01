@@ -1,0 +1,413 @@
+@AGENTS.md
+
+# CLAUDE.md — N5Deal Marketplace Prototype
+
+Persistent context for Claude Code in this repo. Read it before making changes. The original brief is in `assignment.md`, the phased roadmap is in `plan.md`. If scope changes mid-build, update this file rather than letting it drift.
+
+`AGENTS.md` (referenced above) is generated and re-added by `next dev` — it is not hand-written; leave it alone.
+
+## Project
+
+Take-home assignment for N5Deal — a working marketplace prototype for M&A opportunities and financial assets, with three roles (Buyer / Seller / Platform Manager), within a ~24h effort budget. Not production-ready; optimized for demonstrating product and engineering judgment on an intentionally under-specified brief.
+
+## Stack
+
+- Next.js 16, App Router, TypeScript (strict), `src/` layout
+- Prisma 7 + PostgreSQL (Supabase)
+- Better Auth 1.6.23 (Prisma adapter, email + password) — version pinned to match the FishLog baseline
+- shadcn/ui + Tailwind CSS
+- Zod 4 for all mutation input validation
+- Vitest for unit tests
+- Deploy: Vercel (app) + Supabase (DB)
+
+## Known pitfalls — read before writing code
+
+These are the things that will otherwise cost hours.
+
+1. **Better Auth cannot run in middleware.** `auth.api.getSession()` needs Prisma, which needs Node APIs, which don't exist in the Edge runtime. `middleware.ts` checks only for the presence of a session cookie (`getSessionCookie`). All role and status logic lives in server-side layouts and Server Actions.
+2. **Seed users must be created through the auth API.** `prisma.user.create()` with a password won't produce a login-able account — Better Auth stores its own hash format in `Account.password`. Use `auth.api.signUpEmail()`, then `prisma.user.update()` for `role` and `emailVerified`.
+3. **Money is `Int` (whole EUR), never `Decimal`.** Prisma's `Decimal` is a class instance and throws `Only plain objects can be passed to Client Components` when it crosses the RSC boundary. Format at render with `Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })`.
+4. **Supabase needs two connection strings.** `DATABASE_URL` = pooler on `:6543` with `?pgbouncer=true&connection_limit=1`; `DIRECT_URL` = `:5432` for migrations. In Prisma 7 these are wired in `prisma.config.ts`, not in the `datasource` block. Add `"postinstall": "prisma generate"` or Vercel builds with a stale client.
+5. **Next.js 16: `params` and `searchParams` are Promises.** Always `const { id } = await params;`.
+6. **Form inputs are strings.** Use `z.coerce.number()`, never bare `z.number()`. For optional numbers use the `optionalInt` helper below — `z.coerce.number().optional()` turns `""` into `0`.
+7. **`revalidatePath` after every mutation**, otherwise the RSC cache serves stale lists.
+8. **Prisma client singleton** in `src/lib/db.ts` guarded by `globalThis` — dev hot reload otherwise exhausts connections.
+9. **`create-next-app` writes its own `CLAUDE.md`.** Never move/copy a scaffold over this directory with `-Force`; it will clobber this file.
+
+## Conventions
+
+- Default to Server Components. Every mutation is a Server Action; no REST route handlers except `/api/auth/[...all]` and `/api/ai/parse-query`.
+- Server Actions take a typed object, not `FormData`. React Hook Form already produces a validated object client-side; the action re-validates with the same Zod schema server-side.
+- Every mutation input is validated with Zod before it touches Prisma.
+- Access control has three layers: middleware (cookie present) → role layout (`requireRole()`) → Server Action (`requireRole()` again). A Server Action can be invoked directly, so the route guard alone is never enough.
+- List state (search, filters, sort, page) lives in `searchParams`, not client state — it survives refresh, is shareable, and lets the page stay a Server Component.
+- Folder layout: `src/app/(auth)/...`, `src/app/buyer/...`, `src/app/seller/...`, `src/app/manager/...`; shared primitives in `src/components/ui` (shadcn), domain components in `src/components/<domain>`; pure logic in `src/lib/`.
+
+## Roles & Routes
+
+- **Seller** — `/seller/assets`, `/seller/assets/new`, `/seller/assets/[id]/edit`, `/seller/buyers`, `/seller/buyers/[id]`, `/seller/inquiries`
+- **Buyer** — `/buyer/assets`, `/buyer/assets/[id]`, `/buyer/profile`, `/buyer/inquiries`
+- **Manager** — `/manager`, `/manager/participants`, `/manager/assets`
+
+Each role layout calls `requireRole()`, which redirects a mismatched role to its own dashboard root and any non-`ACTIVE` user to `/suspended`.
+
+```ts
+// src/lib/auth-guard.ts
+export async function requireRole(role: Role) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) redirect("/sign-in");
+  if (session.user.status !== "ACTIVE") redirect("/suspended");
+  if (session.user.role !== role) redirect(homeFor(session.user.role));
+  return session.user;
+}
+```
+
+## Reference project — FishLog (auth only)
+
+`FishLog` is a separate personal project by the same author, present in the same VS Code workspace. It contains a **known-working Better Auth + Prisma setup on Next.js App Router**. Use it as the baseline for auth instead of writing one from scratch.
+
+**Read only these files, and only for auth:**
+
+- `src/server/lib/auth.ts` — server instance
+- `src/features/auth/lib/auth-client.ts` — client instance
+- `src/app/api/auth/[...all]/route.ts` — handler
+- the Better Auth models in `prisma/schema.prisma`
+- `prisma.config.ts`
+- the `better-auth` version in `package.json` → **pinned here: 1.6.23**
+
+FishLog has **no `middleware.ts`** — ours is written from scratch (cookie-presence check via `getSessionCookie`).
+
+**Rules:**
+
+- `FishLog` is read-only. Never create, edit or delete anything inside it.
+- Do not read the rest of it. Its domain model, pages and components are unrelated to this project and will pull the design in the wrong direction.
+- **Do not port its architecture.** FishLog uses TanStack Query and a services/repositories layer; N5Deal uses Server Components + Server Actions with no client-side data cache and no repository layer. Copy the auth wiring, not the patterns around it.
+- Adapt the baseline, don't rewrite it. If something in it looks improvable, leave it — it is known to work with the pinned version.
+
+**Changes required on top of the baseline** (FishLog almost certainly lacks these):
+
+- `user.additionalFields`: `role`, `status`, `companyName` — declared in the Better Auth config **and** in `prisma/schema.prisma`
+- `session.cookieCache` enabled
+- `middleware.ts` — cookie-presence check only; all role/status logic lives in `requireRole()` in role layouts and Server Actions
+- seed script that creates users through `auth.api.signUpEmail()`
+
+## Auth
+
+Better Auth generates `User`, `Session`, `Account`, `Verification` via `npx @better-auth/cli generate`. Don't hand-edit those beyond the `additionalFields` on `User` (`role`, `status`, `companyName`), which must be declared **both** in the Prisma schema and in the Better Auth config's `user.additionalFields` — otherwise they won't appear on `session.user`. Enable `session.cookieCache` to avoid a DB hit per request.
+
+Seed users (same demo password, documented in the README):
+
+- `buyer@demo.com` — `BUYER`
+- `seller@demo.com` — `SELLER`
+- `manager@demo.com` — `MANAGER`
+
+The sign-in page has quick-login buttons for these three alongside the normal form.
+
+## Data Model (Prisma)
+
+```prisma
+generator client {
+  // Prisma 7: the "prisma-client" generator (ESM), output committed to .gitignore
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Connection URLs come from prisma.config.ts:
+  //   DATABASE_URL — pooled, :6543 (?pgbouncer=true&connection_limit=1)
+  //   DIRECT_URL   — direct, :5432 — migrations only
+}
+
+// ---------- Better Auth managed models ----------
+
+enum Role {
+  BUYER
+  SELLER
+  MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+model User {
+  id            String     @id // generated by Better Auth
+  name          String
+  email         String     @unique
+  emailVerified Boolean    @default(false)
+  image         String?
+  role          Role       @default(BUYER)
+  status        UserStatus @default(ACTIVE)
+  companyName   String?    // Seller-only, optional. No SellerProfile table — see Assumptions.
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  sessions Session[]
+  accounts Account[]
+
+  buyerProfile      BuyerProfile?
+  assets            Asset[]    @relation("SellerAssets")
+  sentInquiries     Inquiry[]  @relation("InquiriesFrom")
+  receivedInquiries Inquiry[]  @relation("InquiriesTo")
+  auditActions      AuditLog[] @relation("AuditActor")
+
+  @@index([role, status])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id           String    @id
+  accountId    String
+  providerId   String
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String?
+  refreshToken String?
+  idToken      String?
+  expiresAt    DateTime?
+  password     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@map("verification")
+}
+
+// ---------- Domain models ----------
+
+model BuyerProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  industries  String[]
+  regions     String[]
+  budgetMin   Int?     // whole EUR
+  budgetMax   Int?
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+enum AssetCategory {
+  LICENSE
+  OPERATING_BUSINESS
+  STAKE
+}
+
+enum BusinessStatus {
+  ACTIVE
+  DORMANT
+  IN_LIQUIDATION
+}
+
+enum ListingStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+model Asset {
+  id       String @id @default(cuid())
+  sellerId String
+  seller   User   @relation("SellerAssets", fields: [sellerId], references: [id])
+
+  // Common fields — every category
+  title             String
+  category          AssetCategory
+  country           String
+  industry          String
+  businessStatus    BusinessStatus @default(ACTIVE)
+  askingPrice       Int            // whole EUR
+  employees         String?
+  yearFounded       Int?
+  description       String
+  keyAssetsIncluded String[]
+  listingStatus     ListingStatus  @default(ACTIVE)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  // LICENSE-only (required when category = LICENSE — enforced in Zod, not in Prisma)
+  regulatoryBody String?
+  licenseType    String?
+
+  // OPERATING_BUSINESS-only
+  annualRevenue Int?
+  reasonForSale String?
+
+  // STAKE-only
+  stakePercentage Int?
+  // annualRevenue is reused here — a stake sale still has a revenue figure
+
+  inquiries Inquiry[]
+
+  @@index([listingStatus, category, country])
+  @@index([sellerId])
+}
+
+model Inquiry {
+  id         String   @id @default(cuid())
+  fromUserId String
+  from       User     @relation("InquiriesFrom", fields: [fromUserId], references: [id])
+  toUserId   String
+  to         User     @relation("InquiriesTo", fields: [toUserId], references: [id])
+  assetId    String?
+  asset      Asset?   @relation(fields: [assetId], references: [id])
+  message    String
+  createdAt  DateTime @default(now())
+
+  @@index([toUserId, createdAt])
+  @@index([fromUserId, createdAt])
+}
+
+enum AuditAction {
+  SUSPEND_USER
+  REMOVE_USER
+  REACTIVATE_USER
+  SUSPEND_ASSET
+  REMOVE_ASSET
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  actorId    String
+  actor      User        @relation("AuditActor", fields: [actorId], references: [id])
+  action     AuditAction
+  targetType String      // "USER" | "ASSET"
+  targetId   String
+  reason     String?
+  createdAt  DateTime    @default(now())
+
+  @@index([createdAt])
+}
+```
+
+Naming note: `businessStatus` describes the company being sold; `listingStatus` describes the listing's moderation state. Don't conflate them.
+
+### Asset validation (Zod discriminated union)
+
+Category-specific fields are nullable at the DB level and required-by-category at the validation level.
+
+```ts
+const optionalInt = z.preprocess(
+  (v) => (v === "" || v === null || v === undefined ? undefined : v),
+  z.coerce.number().int().positive().optional()
+);
+
+const baseAssetSchema = z.object({
+  title: z.string().min(3).max(120),
+  country: z.string().min(2),
+  industry: z.string().min(2),
+  businessStatus: z.enum(["ACTIVE", "DORMANT", "IN_LIQUIDATION"]),
+  askingPrice: z.coerce.number().int().positive(),
+  employees: z.string().max(40).optional(),
+  yearFounded: optionalInt,
+  description: z.string().min(20).max(2000),
+  keyAssetsIncluded: z.array(z.string().min(1)).max(10).default([]),
+});
+
+export const assetSchema = z.discriminatedUnion("category", [
+  baseAssetSchema.extend({
+    category: z.literal("LICENSE"),
+    regulatoryBody: z.string().min(1),
+    licenseType: z.string().min(1),
+  }),
+  baseAssetSchema.extend({
+    category: z.literal("OPERATING_BUSINESS"),
+    annualRevenue: z.coerce.number().int().positive(),
+    reasonForSale: z.string().max(500).optional(),
+  }),
+  baseAssetSchema.extend({
+    category: z.literal("STAKE"),
+    stakePercentage: z.coerce.number().int().min(1).max(100),
+    annualRevenue: optionalInt,
+  }),
+]);
+```
+
+**UI:** one form, not a wizard. `category` is a `Select` at the top; the matching field block renders below via `watch("category")`. A multi-step form fights `zodResolver` on a discriminated union (it validates the whole object at once) and buys nothing here.
+
+**Edge case — category change on edit:** run `sanitizeByCategory(input)` before `prisma.asset.update()`, explicitly setting the other branches' fields to `null`. Otherwise a listing that used to be a `LICENSE` keeps rendering its old `regulatoryBody` after becoming a `STAKE`.
+
+## Smart Matching
+
+Deterministic and rule-based, so it produces identical results on every review run. Pure function in `src/lib/matching.ts`, called server-side at render time — no background job at this scale.
+
+`computeMatchScore(profile, asset): number`
+
+- `asset.country ∈ profile.regions` → 35
+- `asset.industry ∈ profile.industries` → 35
+- `asset.askingPrice` within `[budgetMin, budgetMax]` → 30
+
+Missing criteria (empty array, null budget bound) score 0 for that component rather than being treated as a wildcard — an empty profile must not read as a 100% match. An open-ended bound (`budgetMax` null) counts as satisfied on that side only.
+
+Surfaced as: a % badge on asset cards in `/buyer/assets`, a "Recommended for you" section, the reciprocal view on `/seller/buyers`, and a "Best match" sort on both.
+
+**No-profile fallback:** a Buyer without a `BuyerProfile` sees no badges, no "Recommended" section, and a prompt linking to `/buyer/profile`.
+
+## AI feature — natural-language search
+
+The only LLM call in the app. `POST /api/ai/parse-query` turns free text ("licensed fintech in Portugal under 2M") into `{ search?, country?, industry?, category?, priceMin?, priceMax? }`, validated with Zod, then written into `searchParams` so it reuses the filtering path that already exists.
+
+**Hard requirement:** every failure path (error, timeout, non-JSON, schema mismatch) falls back to treating the input as a plain text search, with a small inline note. The demo must never be broken by this feature.
+
+## Manager actions — Suspend vs Remove
+
+- **Suspend** (`SUSPENDED`): reversible soft block. The user is redirected to `/suspended` on their next request; their assets disappear from Buyer browse but are not deleted.
+- **Remove** (`REMOVED`): soft delete. Hidden everywhere, data retained — keeps an audit trail and avoids FK-cascade complexity. Not reversible from the UI.
+- Suspending or removing a **Seller** cascades at the **application level**: one Prisma transaction updates `User.status`, bulk-updates that seller's `Asset.listingStatus`, and writes an `AuditLog` row. Nothing is deleted from the database.
+
+**Guards:** a manager cannot change their own status, and cannot suspend or remove another manager. Both checks live in the Server Action.
+
+## Inquiry (contact flow)
+
+"Contact Buyer" / "Contact Seller" creates a single `Inquiry` record (message + timestamp), not a chat thread. Each role sees Sent / Received lists. No read state, no in-thread replies — a deliberate scope cut.
+
+## Explicit scope cuts (do not build unless every phase in plan.md is done)
+
+- No self-registration — 3 seed users only
+- No live chat / websockets for Inquiry
+- No view counters or favourites (present on the reference site, absent from the written brief)
+- No currency conversion (EUR only)
+- No email notifications
+- No multi-language support (the approach is described in the README instead)
+
+## Seed data
+
+3 users (one per role), ~15 assets across all 3 categories and ≥5 countries / ≥6 industries with a wide price spread, ~8 buyer profiles with varied industries/regions/budgets — enough that Smart Matching shows a visible spread of scores rather than all 100% or all 0%. Users must be created via `auth.api.signUpEmail()`.
+
+## Key assumptions (full reasoning belongs in the README)
+
+1. Auth is full Better Auth + 3 seeded users, not a no-login role switcher.
+2. `Asset` fields aren't specified in the brief — modeled from its "M&A opportunities and financial assets" framing, not copied 1:1 from the narrower license-trading reference site.
+3. `Asset.category` (License / Operating Business / Stake) doesn't exist on the reference site — added because the written brief is broader than pure license trading.
+4. Contact flow is a single `Inquiry` record, not live chat.
+5. The brief requires a profile for Buyer only. Sellers get one optional `companyName` field on `User` rather than a full `SellerProfile` table.
+6. `SUSPENDED` = reversible soft block, `REMOVED` = soft delete; both cascade to a Seller's assets at the application level, not via DB cascade.
+7. Money is stored as `Int` in whole EUR — no floats, no `Decimal`, single currency, no conversion.
+8. View counters and favourites from the reference site are intentionally excluded — not in the written brief.
+9. Matching is deterministic so review runs are reproducible; the single LLM feature is additive and degrades gracefully to plain search.
