@@ -22,8 +22,14 @@ export function proxy(request: NextRequest) {
 
   if (!sessionCookie) {
     const signInUrl = new URL("/sign-in", request.url);
-    // Preserve where they were headed so sign-in can bounce them back.
-    signInUrl.searchParams.set("next", request.nextUrl.pathname);
+    // Preserve where they were headed, query string included — all list state
+    // (search, filters, sort) lives in searchParams, so dropping it would send
+    // someone who followed a shared filtered link to a bare, unfiltered page
+    // after signing in.
+    signInUrl.searchParams.set(
+      "next",
+      request.nextUrl.pathname + request.nextUrl.search
+    );
     return NextResponse.redirect(signInUrl);
   }
 

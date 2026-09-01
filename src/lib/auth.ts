@@ -29,6 +29,16 @@ export const auth = betterAuth({
     // No mail provider in a prototype, and seed users are the only accounts.
     requireEmailVerification: false,
     minPasswordLength: 8,
+    // "No self-registration — 3 seed users only" is a declared scope cut, so
+    // the endpoint has to actually be closed: with `enabled: true` alone,
+    // POST /api/auth/sign-up/email happily creates BUYER/ACTIVE accounts on
+    // the public demo URL.
+    //
+    // This also blocks `auth.api.signUpEmail()`, which the seed used to call.
+    // The seed now goes through `auth.$context.internalAdapter` instead —
+    // the same code path the endpoint uses internally, so password hashing,
+    // ID generation and field mapping stay identical.
+    disableSignUp: true,
   },
 
   // These three columns exist on the Prisma User model, but Better Auth only

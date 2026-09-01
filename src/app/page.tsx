@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/db";
 
+// Prisma queries are invisible to Next's dynamic-detection (only `fetch`,
+// `headers()`, `cookies()` and friends mark a route dynamic), so without this
+// the page is prerendered at build time: the counts freeze at whatever the DB
+// held during `next build`, and the build itself starts depending on Supabase
+// being reachable.
+export const dynamic = "force-dynamic";
+
 // Phase 0 walking skeleton: proves the deployed app can reach Postgres.
 // Replaced by the real landing page in Phase 9 once role routing (Phase 2)
 // and the theme pass exist to link to.
@@ -11,11 +18,11 @@ export default async function Home() {
   ]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-zinc-50 p-8 text-center dark:bg-black">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background p-8 text-center">
       <h1 className="text-2xl font-semibold tracking-tight">
         N5Deal Marketplace — prototype
       </h1>
-      <p className="text-zinc-600 dark:text-zinc-400">
+      <p className="text-muted-foreground">
         Database connection verified: {assetCount} active listings,{" "}
         {buyerCount} buyers, {sellerCount} sellers.
       </p>

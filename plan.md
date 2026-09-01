@@ -12,31 +12,31 @@ Companion to `CLAUDE.md` (architecture, conventions, data model, known pitfalls)
 
 ### Phase 0 — Setup + walking skeleton (2h)
 
-- [ ] `create-next-app` (TypeScript, App Router, Tailwind, ESLint)
-- [ ] `shadcn/ui` init + base components (button, card, input, select, dialog, table, badge, form, tabs, sheet, sonner)
-- [ ] Supabase project; set **both** `DATABASE_URL` (pooler `:6543`, `?pgbouncer=true&connection_limit=1`) and `DIRECT_URL` (`:5432`)
-- [ ] `"postinstall": "prisma generate"` in `package.json`
-- [ ] Prisma init + singleton client in `lib/db.ts`
-- [ ] Port the Better Auth baseline from `FishLog` (see `CLAUDE.md` → Reference project): `lib/auth.ts`, `lib/auth-client.ts`, `app/api/auth/[...all]/route.ts`, auth models in `schema.prisma`, `middleware.ts`. **Pin the same `better-auth` version.**
-- [ ] Add on top of it: `user.additionalFields` (`role`, `status`, `companyName`) in both the config and the schema, `session.cookieCache`, middleware reduced to a cookie-presence check
-- [ ] Verify sign-in works end to end before touching the domain model (`cli generate` should not be needed — the models come from the baseline)
+- [x] `create-next-app` (TypeScript, App Router, Tailwind, ESLint)
+- [x] `shadcn/ui` init + base components (button, card, input, select, dialog, table, badge, form, tabs, sheet, sonner) — *the registry no longer serves `form` for the radix/nova style; `field` (Field/FieldLabel/FieldError) is the substitute, wired to react-hook-form by hand*
+- [x] Supabase project; set **both** `DATABASE_URL` (pooler `:6543`, `?pgbouncer=true&connection_limit=1`) and `DIRECT_URL` (`:5432`) — *`DIRECT_URL` actually uses the Session Pooler on `:5432`, not the raw direct host: `db.<ref>.supabase.co` resolves IPv6-only and was unreachable — see CLAUDE.md pitfall*
+- [x] `"postinstall": "prisma generate"` in `package.json`
+- [x] Prisma init + singleton client in `lib/db.ts` (`src/lib/db.ts` — project uses the `src/` layout)
+- [x] Port the Better Auth baseline from `FishLog` (see `CLAUDE.md` → Reference project): `lib/auth.ts`, `lib/auth-client.ts`, `app/api/auth/[...all]/route.ts`, auth models in `schema.prisma`, `middleware.ts`. **Pin the same `better-auth` version.** — *`middleware.ts` → `src/proxy.ts`, Next 16 renamed the file; same semantics*
+- [x] Add on top of it: `user.additionalFields` (`role`, `status`, `companyName`) in both the config and the schema, `session.cookieCache`, middleware reduced to a cookie-presence check
+- [x] Verify sign-in works end to end before touching the domain model (`cli generate` should not be needed — the models come from the baseline) — *verified at the API level: all 3 seeded users pass `auth.api.signInEmail()` with `role`/`status` present on the session user, and `signUpEmail()` is correctly rejected. The `/sign-in` UI itself is Phase 2.*
 - [ ] Theme tokens (colors/typography loosely matching the N5Deal reference)
-- [ ] **Deploy to Vercel now**: one page that reads one row from the DB. Do not proceed until the deployed URL renders it.
+- [x] **Deploy to Vercel now**: one page that reads one row from the DB. Do not proceed until the deployed URL renders it. — *https://n5deal-marketplace-three.vercel.app renders live counts from Supabase*
 
 ### Phase 1 — Data model + seed (2h)
 
-- [ ] Full Prisma schema per `CLAUDE.md`
-- [ ] `prisma migrate dev`
-- [ ] `prisma/seed.ts`:
+- [x] Full Prisma schema per `CLAUDE.md`
+- [x] `prisma migrate dev`
+- [x] `prisma/seed.ts`:
   - users created via `auth.api.signUpEmail()` (NOT `prisma.user.create` — see `CLAUDE.md` → Pitfalls), then patched with `role` / `emailVerified: true`
-  - ~15 assets across all 3 categories, ≥5 countries, ≥6 industries, wide price spread
+  - ~15 assets across all 3 categories, ≥5 countries, ≥6 industries, wide price spread — *18 assets, 9 countries, 10 industries*
   - ~8 buyer profiles with varied industries/regions/budgets so match scores land between 0 and 100, not all-or-nothing
-- [ ] Run seed against the deployed DB too
+- [x] Run seed against the deployed DB too — *same Supabase instance backs both local dev and the Vercel deployment, so one seed run covers both*
 
 ### Phase 2 — Auth + role routing (1.5h)
 
 - [ ] Sign-in page (email + password) + quick-login buttons for the 3 seed users
-- [ ] `middleware.ts` — cookie presence only (`getSessionCookie`), redirect to `/sign-in`. No DB, no role logic.
+- [x] `middleware.ts` — cookie presence only (`getSessionCookie`), redirect to `/sign-in`. No DB, no role logic. — *done early, in Phase 0, as `src/proxy.ts`*
 - [ ] `lib/auth-guard.ts` → `requireRole(role)`: fetches session, checks role and `status`, redirects. Used in role layouts **and** in every Server Action.
 - [ ] `app/buyer/layout.tsx`, `app/seller/layout.tsx`, `app/manager/layout.tsx` calling `requireRole()`
 - [ ] `/suspended` page for `status !== ACTIVE`

@@ -3,12 +3,15 @@
 // Idempotent by truncation: it wipes the domain and auth tables, then rebuilds
 // everything. Safe to re-run; never run it against anything but a demo DB.
 //
-// The one non-obvious rule: users MUST be created through
-// `auth.api.signUpEmail()`, not `prisma.user.create()`. Better Auth stores its
-// own scrypt hash in Account.password, so a hand-inserted user row exists but
-// can never sign in. `role` and `status` are then patched with Prisma because
-// they are declared `input: false` in the auth config — they are deliberately
-// not settable from a sign-up payload.
+// The one non-obvious rule: users must NOT be created with
+// `prisma.user.create()`. Better Auth keeps its own scrypt hash in
+// Account.password, so a hand-inserted user row exists but can never sign in.
+//
+// Sign-up is closed (`disableSignUp: true` — see src/lib/auth.ts), which also
+// closes `auth.api.signUpEmail()`. So the seed drops to the layer directly
+// underneath it: `auth.$context.internalAdapter`, which is what the sign-up
+// endpoint itself calls once it is past the disableSignUp check. Same hashing,
+// same ID generation, same field mapping — just without the public endpoint.
 
 import "dotenv/config";
 
@@ -55,7 +58,29 @@ function assertTaxonomy(
 
 const DEMO_PASSWORD = "demo1234";
 
+// Without explicit timestamps every seeded row lands on the same millisecond,
+// so "latest activity" lists (/manager, the inquiry tabs) come back in
+// arbitrary order and look broken. Spread them over the last week instead.
+const SEEDED_AT = Date.now();
+const hoursAgo = (h: number) => new Date(SEEDED_AT - h * 60 * 60 * 1000);
+const daysAgo = (d: number) => hoursAgo(d * 24);
+
 type SeedRole = "BUYER" | "SELLER" | "MANAGER";
+
+// `auth.$context` is a promise. Resolve it (and hash the shared demo password)
+// once, lazily — every seeded user gets the same password, so hashing it 12
+// times would just be 12x the scrypt cost for an identical result.
+type AuthContext = Awaited<typeof auth.$context>;
+
+let authSetup: Promise<{ ctx: AuthContext; passwordHash: string }> | null = null;
+
+function getAuthSetup() {
+  authSetup ??= (async () => {
+    const ctx = await auth.$context;
+    return { ctx, passwordHash: await ctx.password.hash(DEMO_PASSWORD) };
+  })();
+  return authSetup;
+}
 
 async function createUser(opts: {
   email: string;
@@ -63,23 +88,27 @@ async function createUser(opts: {
   role: SeedRole;
   companyName?: string;
 }) {
-  const { user } = await auth.api.signUpEmail({
-    body: {
-      email: opts.email,
-      password: DEMO_PASSWORD,
-      name: opts.name,
-    },
+  const { ctx, passwordHash } = await getAuthSetup();
+
+  const user = await ctx.internalAdapter.createUser({
+    email: opts.email,
+    name: opts.name,
+    emailVerified: true,
+    role: opts.role,
+    status: "ACTIVE",
+    companyName: opts.companyName ?? null,
   });
 
-  return prisma.user.update({
-    where: { id: user.id },
-    data: {
-      role: opts.role,
-      status: "ACTIVE",
-      emailVerified: true,
-      companyName: opts.companyName ?? null,
-    },
+  // providerId "credential" + accountId === user.id is exactly what
+  // sign-up/email writes for an email+password account.
+  await ctx.internalAdapter.linkAccount({
+    userId: user.id,
+    providerId: "credential",
+    accountId: user.id,
+    password: passwordHash,
   });
+
+  return user;
 }
 
 async function wipe() {
@@ -150,7 +179,7 @@ async function main() {
   // Spread deliberately: some profiles hit all three matching criteria on some
   // assets, some hit one, some hit none. A demo where every score is 100% or
   // 0% tells a reviewer nothing about the matching logic.
-  console.log("Creating buyer profiles...");
+  console.log("Building buyer profiles...");
 
   const profiles: Prisma.BuyerProfileCreateManyInput[] = [
     {
@@ -230,10 +259,8 @@ async function main() {
     },
   ];
 
-  await prisma.buyerProfile.createMany({ data: profiles });
-
   // ---------------------------------------------------------------- assets
-  console.log("Creating assets...");
+  console.log("Building assets...");
 
   const assets: Prisma.AssetCreateManyInput[] = [
     // ----- LICENSE -----
@@ -626,9 +653,21 @@ async function main() {
     },
   ];
 
+  // Validate BOTH collections before either is written — otherwise the guard
+  // is decorative for whichever one was already inserted.
   assertTaxonomy(assets, profiles);
 
-  await prisma.asset.createMany({ data: assets });
+  console.log("Writing buyer profiles and assets...");
+  await prisma.buyerProfile.createMany({ data: profiles });
+  await prisma.asset.createMany({
+    // Deterministic but non-monotonic spread over ~2 months, so a "newest
+    // first" sort produces a genuinely mixed list rather than just reversing
+    // the array literal above.
+    data: assets.map((asset, i) => ({
+      ...asset,
+      createdAt: daysAgo(((i * 37) % 59) + 1),
+    })),
+  });
 
   // ------------------------------------------------------------- inquiries
   // A handful so the Sent/Received tabs are not empty on first load.
@@ -649,6 +688,7 @@ async function main() {
         assetId: irishEmi.id,
         message:
           "Interested in the EMI. Could you share the passporting list and confirm whether the sponsor bank relationship survives a change of control? We are ready to sign an NDA today.",
+        createdAt: daysAgo(6),
       },
       {
         fromUserId: otherBuyers[5].id, // Silva
@@ -656,6 +696,7 @@ async function main() {
         assetId: null,
         message:
           "We are actively acquiring clinics in Portugal. If the Porto dental group does not complete, we would like to be told before it is relisted.",
+        createdAt: daysAgo(4),
       },
       {
         fromUserId: otherBuyers[2].id, // Rossi
@@ -663,6 +704,7 @@ async function main() {
         assetId: dublinSaas.id,
         message:
           "What does the 112% net revenue retention look like excluding the two largest accounts? Also, is the founder's 12-month commitment contractual or a handshake?",
+        createdAt: daysAgo(2),
       },
       // Seller-initiated: no asset attached, which is why Inquiry.assetId is
       // nullable.
@@ -672,6 +714,7 @@ async function main() {
         assetId: null,
         message:
           "Saw your profile — payments and e-money in Ireland and Portugal. I have two mandates that have not been listed yet. Worth a call?",
+        createdAt: hoursAgo(5),
       },
     ],
   });
@@ -690,6 +733,7 @@ async function main() {
       targetId: suspendedAsset.id,
       reason:
         "Unsubstantiated claim of guaranteed regulatory approval; entity details do not match the public register.",
+      createdAt: daysAgo(3),
     },
   });
 

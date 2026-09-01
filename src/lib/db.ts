@@ -17,12 +17,14 @@ const globalForPrisma = globalThis as unknown as {
 // Prisma 7 removed the bundled Rust engine — connections go through a driver
 // adapter. PrismaPg wraps the `pg` driver. This is the RUNTIME url: the
 // Supabase pooler (:6543). Migrations use DIRECT_URL via prisma.config.ts.
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-
+//
+// The adapter is constructed inside the `??` branch on purpose: it allocates a
+// pg.Pool, and building one on every hot-reload eval just to discard it in
+// favour of the cached client is pure waste.
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    adapter,
+    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 

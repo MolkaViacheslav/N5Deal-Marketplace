@@ -402,7 +402,7 @@ The only LLM call in the app. `POST /api/ai/parse-query` turns free text ("licen
 
 ## Explicit scope cuts (do not build unless every phase in plan.md is done)
 
-- No self-registration — 3 seed users only
+- No self-registration — 3 seed users only. **Enforced**, not just declared: `emailAndPassword.disableSignUp: true`. That also closes `auth.api.signUpEmail()`, so the seed creates users through `auth.$context.internalAdapter` (`createUser` + `linkAccount` with `providerId: "credential"`, `accountId === user.id`) — the same calls the sign-up endpoint makes once past its own guard.
 - No live chat / websockets for Inquiry
 - No view counters or favourites (present on the reference site, absent from the written brief)
 - No currency conversion (EUR only)
