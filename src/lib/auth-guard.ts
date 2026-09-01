@@ -14,6 +14,7 @@
 
 import "server-only";
 
+import { cache } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -24,11 +25,17 @@ import type { Role } from "@/generated/prisma/enums";
 /**
  * The session user, or `null` when signed out. Never redirects — use this for
  * pages that render differently for guests (the landing page, /sign-in).
+ *
+ * Wrapped in React's `cache()` so a role layout and a page beneath it (or a
+ * page and a component it renders) calling this within the same request
+ * share one lookup instead of one `auth.api.getSession()` each. The cache is
+ * per-request only — it never leaks a user's session into another request or
+ * another user's render.
  */
-export async function getSessionUser() {
+export const getSessionUser = cache(async () => {
   const session = await auth.api.getSession({ headers: await headers() });
   return session?.user ?? null;
-}
+});
 
 /**
  * Any signed-in, ACTIVE user. Use where a route is shared across roles.

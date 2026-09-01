@@ -13,12 +13,19 @@ export function SignOutButton() {
 
   async function handleSignOut() {
     setPending(true);
-    await authClient.signOut();
-    // `refresh()` alongside `push()` because the header and every guarded page
-    // are Server Components: without it the RSC cache would happily re-render
-    // the signed-in shell after the cookie is already gone.
-    router.push("/sign-in");
-    router.refresh();
+    try {
+      // A plain fetch under the hood — a network failure (offline, DNS,
+      // server down) rejects this. Without the try/finally the button would
+      // stay disabled and stuck on "Signing out…" forever.
+      await authClient.signOut();
+      // `refresh()` alongside `push()` because the header and every guarded
+      // page are Server Components: without it the RSC cache would happily
+      // re-render the signed-in shell after the cookie is already gone.
+      router.push("/sign-in");
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
   }
 
   return (

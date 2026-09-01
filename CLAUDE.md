@@ -71,6 +71,8 @@ These are the things that will otherwise cost hours.
 
    **The trap:** Supabase's direct host `db.<ref>.supabase.co:5432` publishes an **AAAA (IPv6) record only**. On an IPv4-only network `prisma migrate` dies with `P1001: Can't reach database server`, and the message points at the host as if it were down. Use the **Session Pooler** instead — same pooler host as `DATABASE_URL`, port `:5432`, no `pgbouncer` flag. It is IPv4-reachable and, unlike the Transaction Pooler on `:6543`, supports the session-scoped connections and advisory locks migrations need. Diagnose with `Resolve-DnsName db.<ref>.supabase.co` (AAAA only = this problem).
 5. **A Prisma read does not make a route dynamic.** Next only auto-detects `fetch`, `headers()`, `cookies()`, `searchParams` etc. A page that only calls `prisma.*` gets **statically prerendered at build time**: the data freezes at build, and the build itself starts requiring DB access (a Supabase hiccup then fails the deploy). Any page reading live data needs `export const dynamic = "force-dynamic";`. Check `next build` output — it must say `ƒ (Dynamic)`, not `○ (Static)`. This applies to every list and detail page in Phases 3–6.
+
+   The role layouts (`src/app/{buyer,seller,manager}/layout.tsx`) don't carry this export and don't need it: `requireRole()` calls `headers()` (via `getSessionUser()`), which **is** on Next's dynamic-API list, and a dynamic call anywhere in a route's layout/page tree makes the whole route dynamic — confirmed in the `next build` output (all three sections list as `ƒ`). `/sign-in` and `/suspended` carry the export explicitly anyway, since it costs nothing and they'll keep reading the session even if that call path ever changes. Don't add it reflexively to every guarded route; add it where the page's *own* dynamic behavior isn't already guaranteed by something upstream.
 6. **Next.js 16: `params` and `searchParams` are Promises.** Always `const { id } = await params;`.
 7. **Form inputs are strings.** Use `z.coerce.number()`, never bare `z.number()`. For optional numbers use the `optionalInt` helper below — `z.coerce.number().optional()` turns `""` into `0`.
 8. **`revalidatePath` after every mutation**, otherwise the RSC cache serves stale lists.
@@ -100,16 +102,28 @@ These are the things that will otherwise cost hours.
 - **Buyer** — `/buyer/assets`, `/buyer/assets/[id]`, `/buyer/profile`, `/buyer/inquiries`
 - **Manager** — `/manager`, `/manager/participants`, `/manager/assets`
 
-Each role layout calls `requireRole()`, which redirects a mismatched role to its own dashboard root and any non-`ACTIVE` user to `/suspended`.
+Each role layout calls `requireRole()`, which redirects a mismatched role to its own dashboard root and any non-`ACTIVE` user to `/suspended`. `getSessionUser()`/`requireUser()`/`requireRole()` build on each other rather than being one function — a page that only needs "is anyone signed in" (e.g. a route shared across roles) has no reason to also assert a specific role.
 
 ```ts
-// src/lib/auth-guard.ts
-export async function requireRole(role: Role) {
+// src/lib/auth-guard.ts — actual shape; requireRole calls requireUser calls getSessionUser
+export const getSessionUser = cache(async () => {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/sign-in");
-  if (session.user.status !== "ACTIVE") redirect("/suspended");
-  if (session.user.role !== role) redirect(homeFor(session.user.role));
-  return session.user;
+  return session?.user ?? null; // never redirects — for guest-aware pages
+});
+
+export async function requireUser() {
+  const user = await getSessionUser();
+  if (!user) redirect("/sign-in");
+  if (user.status !== "ACTIVE") redirect("/suspended"); // treats a missing
+  // status as "not active" — fail closed, not a bug: an auth guard that
+  // treats an unexpectedly-absent status as ACTIVE would be the actual hole.
+  return user;
+}
+
+export async function requireRole(role: Role) {
+  const user = await requireUser();
+  if (user.role !== role) redirect(homeFor(user.role));
+  return user;
 }
 ```
 

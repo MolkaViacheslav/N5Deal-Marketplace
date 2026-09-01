@@ -15,13 +15,23 @@ export type NavItem = { href: string; label: string };
 export function MainNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
 
+  // The single longest matching href, not "does this item match" checked
+  // independently per item. Independent checks double-light a parent whose
+  // own href is a path prefix of a sibling's — e.g. on /manager/participants,
+  // both "/manager" (Overview) and "/manager/participants" (Participants)
+  // pass a naive `startsWith(href + "/")` test, since the latter starts with
+  // "/manager/" too. Picking the longest match resolves the ambiguity the
+  // way a router would: the most specific route wins.
+  const activeHref = items
+    .filter(
+      (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
   return (
     <nav className="flex items-center gap-1" aria-label="Main">
       {items.map((item) => {
-        // Exact match, or a descendant route — so /buyer/assets/[id] keeps
-        // "Listings" lit. Guard against /manager matching /manager-something.
-        const isActive =
-          pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const isActive = item.href === activeHref;
 
         return (
           <Link
