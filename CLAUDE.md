@@ -35,6 +35,7 @@ These are the things that will otherwise cost hours.
 9. **Prisma 7 has no bundled query engine.** Connections go through a *driver adapter*: `new PrismaPg({ connectionString: process.env.DATABASE_URL })` passed as `adapter` to `PrismaClient`. Requires `@prisma/adapter-pg` + `pg`.
 10. **`create-next-app` writes its own `CLAUDE.md`** (a one-line `@AGENTS.md` pointer). Never move/copy a scaffold over this directory with `-Force`; it will clobber this file.
 11. **npm 11 blocks install scripts by default.** `prisma`, `@prisma/engines`, `esbuild` and `unrs-resolver` are approved in `package.json` → `allowScripts`. A new dependency with a postinstall hook will warn until it's approved too.
+12. **Never pipe a value into `vercel env add` from PowerShell.** `$value | vercel env add NAME production` prepends a UTF-8 BOM (`﻿`) to the stdin PowerShell hands the child process. It's invisible in `vercel env ls`, but `new URL("﻿https://...")` throws, and a BOM-prefixed connection string fails to parse — this took down every env var set this way in one shot (`Invalid base URL`, Prisma `Can't reach database server`). Use Bash: `printf '%s' "$value" | vercel env add NAME production`. To audit a suspect value: `vercel env pull .env.check --environment production --yes` then `xxd` the line — a real value starts `NEXT_PUBLIC_APP_URL="h...`, a corrupted one starts with the 3 bytes `ef bb bf` before the `h`.
 
 ## Conventions
 
