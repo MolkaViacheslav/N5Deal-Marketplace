@@ -10,6 +10,12 @@
 // broader result set, never to an error page or to an empty list that looks
 // like "no matches" when the filter itself was nonsense.
 
+import {
+  firstValue,
+  oneOf,
+  searchText,
+  type RawSearchParams,
+} from "@/lib/search-params";
 import { COUNTRIES, INDUSTRIES, ASSET_CATEGORIES } from "@/lib/taxonomy";
 import type { Prisma } from "@/generated/prisma/client";
 import type { AssetCategory } from "@/generated/prisma/enums";
@@ -41,25 +47,6 @@ export type AssetFilters = {
   sort: SortOption;
 };
 
-/** Next hands repeated keys through as arrays; we only ever want one value. */
-type RawSearchParams = Record<string, string | string[] | undefined>;
-
-function firstValue(raw: string | string[] | undefined): string | undefined {
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-}
-
-function oneOf<T extends string>(
-  raw: string | string[] | undefined,
-  allowed: readonly T[]
-): T | null {
-  const value = firstValue(raw);
-  return value && (allowed as readonly string[]).includes(value)
-    ? (value as T)
-    : null;
-}
-
 /**
  * Prices arrive as strings from `<input type="number">`. Anything non-numeric,
  * negative, or absurd is dropped rather than clamped — a filter the user did
@@ -82,13 +69,9 @@ export function positiveInt(raw: string | string[] | undefined): number | null {
 const CATEGORY_VALUES = ASSET_CATEGORIES.map((c) => c.value);
 const SORT_VALUES = SORT_OPTIONS.map((s) => s.value);
 
-// Long enough for any real search, short enough that the string never reaches
-// Postgres as a multi-kilobyte ILIKE pattern.
-const MAX_QUERY_LENGTH = 100;
-
 export function parseAssetFilters(params: RawSearchParams): AssetFilters {
   return {
-    search: (firstValue(params.search) ?? "").slice(0, MAX_QUERY_LENGTH),
+    search: searchText(params.search),
     country: oneOf(params.country, COUNTRIES),
     category: oneOf(params.category, CATEGORY_VALUES),
     industry: oneOf(params.industry, INDUSTRIES),

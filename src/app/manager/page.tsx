@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDateTime } from "@/lib/taxonomy";
 import type { AuditAction } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Overview" };
@@ -24,12 +25,6 @@ const ACTION_LABEL: Record<AuditAction, string> = {
   SUSPEND_ASSET: "Suspended listing",
   REMOVE_ASSET: "Removed listing",
 };
-
-// Deterministic regardless of which region the server render happens to run
-// in (Vercel functions aren't pinned to one) — code review flagged
-// timeZone-less date formatting as effectively "whatever UTC offset the
-// server host is in today," not the reviewer's own local time.
-const DATE_TIME_ZONE = "Europe/Dublin";
 
 export default async function ManagerOverviewPage() {
   // Same defense-in-depth reasoning as the other two manager pages.
@@ -85,14 +80,7 @@ export default async function ManagerOverviewPage() {
                       {entry.reason ?? "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {entry.createdAt.toLocaleString("en-IE", {
-                        timeZone: DATE_TIME_ZONE,
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatDateTime(entry.createdAt)}
                     </TableCell>
                   </TableRow>
                 ))}

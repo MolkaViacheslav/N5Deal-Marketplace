@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/taxonomy";
 
 export type InquiryCardData = {
   id: string;
@@ -73,11 +74,6 @@ export function InquiryCard({
 }
 
 const RELATIVE = new Intl.RelativeTimeFormat("en-IE", { numeric: "auto" });
-const ABSOLUTE = new Intl.DateTimeFormat("en-IE", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
 
 /**
  * Relative for the first week, absolute after that — "13 days ago" is harder
@@ -97,5 +93,5 @@ function formatWhen(date: Date): string {
   const diffDays = Math.round(diffHours / 24);
   if (diffDays <= 7) return RELATIVE.format(-diffDays, "day");
 
-  return ABSOLUTE.format(date);
+  return formatDate(date);
 }

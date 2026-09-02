@@ -61,6 +61,19 @@ export const BUSINESS_STATUSES = [
   { value: "IN_LIQUIDATION", label: "In liquidation" },
 ] as const;
 
+// `UserStatus` and `ListingStatus` are separate Prisma enums with identical
+// members, because a participant and a listing are moderated independently —
+// but they are one vocabulary to a reader, and the manager's two tables, the
+// two filter bars and (Phase 5) the seller's own listings table would
+// otherwise each carry their own copy of these three labels.
+export const MODERATION_STATUSES = [
+  { value: "ACTIVE", label: "Active" },
+  { value: "SUSPENDED", label: "Suspended" },
+  { value: "REMOVED", label: "Removed" },
+] as const;
+
+export type ModerationStatus = (typeof MODERATION_STATUSES)[number]["value"];
+
 const labelOf = <T extends readonly { value: string; label: string }[]>(
   list: T,
   value: string
@@ -69,7 +82,14 @@ const labelOf = <T extends readonly { value: string; label: string }[]>(
 export const categoryLabel = (value: string) => labelOf(ASSET_CATEGORIES, value);
 export const businessStatusLabel = (value: string) =>
   labelOf(BUSINESS_STATUSES, value);
+export const moderationStatusLabel = (value: string) =>
+  labelOf(MODERATION_STATUSES, value);
 
+// ---------------------------------------------------------------------------
+// Display formatters. They live here, next to the vocabularies, because the
+// question they answer is the same one: "how is this value written down in
+// this app?" — and having exactly one answer is the point.
+//
 // Money is stored as whole EUR integers (CLAUDE.md pitfall 3). This is the one
 // place it becomes a string.
 const eur = new Intl.NumberFormat("en-IE", {
@@ -90,3 +110,29 @@ export function formatEurCompact(amount: number): string {
   if (amount >= 1_000) return `€${Math.round(amount / 1_000)}K`;
   return eur.format(amount);
 }
+
+// Dates are formatted on the server, and a Vercel function is not pinned to
+// one region — leave the time zone out and the same timestamp renders as a
+// different day depending on which machine served the request. Pinned to the
+// marketplace's own zone so every screen agrees, and so a reviewer comparing
+// two tables never sees the same row dated a day apart.
+const TIME_ZONE = "Europe/Dublin";
+
+const date = new Intl.DateTimeFormat("en-IE", {
+  timeZone: TIME_ZONE,
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+const dateTime = new Intl.DateTimeFormat("en-IE", {
+  timeZone: TIME_ZONE,
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+export const formatDate = (value: Date) => date.format(value);
+export const formatDateTime = (value: Date) => dateTime.format(value);

@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useTransition } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { COUNTRIES, INDUSTRIES, ASSET_CATEGORIES } from "@/lib/taxonomy";
+import { useUrlFilters } from "@/lib/use-url-filters";
 import {
   DEFAULT_SORT,
   hasActiveFilters,
@@ -26,6 +26,9 @@ import {
 // mean "nothing selected"), so "any" stands in for the cleared state and is
 // translated back to a deleted query param on the way out.
 const ANY = "any";
+
+/** The sentinel stays local to the bar; the URL just loses the key. */
+const orNull = (value: string) => (value === ANY ? null : value);
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -47,10 +50,7 @@ const SEARCH_DEBOUNCE_MS = 300;
  * instead of displaying a filter that isn't actually applied.
  */
 export function AssetFilterBar({ filters }: { filters: AssetFilters }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+  const { commit, clearAll: clearParams, isPending } = useUrlFilters();
 
   const searchRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -77,48 +77,6 @@ export function AssetFilterBar({ filters }: { filters: AssetFilters }) {
   // router update against a route that is no longer mounted.
   useEffect(() => () => clearTimeout(debounceRef.current), []);
 
-  // The query string every `commit` builds on. It cannot be `useSearchParams()`
-  // directly: `router.replace` runs inside a transition, so the hook keeps
-  // returning the *pre-navigation* params until that transition commits. Pick
-  // Category and then Country within the same beat and the second write, built
-  // from a snapshot taken before the first landed, silently drops `category`
-  // again. The debounced search write has the same hazard, one closure deeper.
-  //
-  // So our own writes are recorded here the moment they are issued, and the
-  // hook is only trusted once nothing is in flight — which is exactly when a
-  // change from somewhere else (back/forward, Clear filters) shows up.
-  const paramsRef = useRef(searchParams.toString());
-
-  useEffect(() => {
-    if (!isPending) paramsRef.current = searchParams.toString();
-  }, [isPending, searchParams]);
-
-  const commit = useCallback(
-    (updates: Record<string, string | null>) => {
-      const next = new URLSearchParams(paramsRef.current);
-
-      for (const [key, value] of Object.entries(updates)) {
-        if (value === null || value === "" || value === ANY) next.delete(key);
-        else next.set(key, value);
-      }
-
-      const queryString = next.toString();
-      if (queryString === paramsRef.current) return;
-      paramsRef.current = queryString;
-
-      // `replace`, not `push`: a debounced text field would otherwise stack a
-      // history entry per pause in typing and make the back button useless.
-      // Sharing and refresh — the reasons the state is in the URL at all —
-      // work identically either way.
-      startTransition(() => {
-        router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
-          scroll: false,
-        });
-      });
-    },
-    [pathname, router]
-  );
-
   function onSearchInput() {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -131,12 +89,8 @@ export function AssetFilterBar({ filters }: { filters: AssetFilters }) {
   function clearAll() {
     clearTimeout(debounceRef.current);
     lastPushedSearch.current = "";
-    paramsRef.current = "";
     if (searchRef.current) searchRef.current.value = "";
-
-    startTransition(() => {
-      router.replace(pathname, { scroll: false });
-    });
+    clearParams();
   }
 
   const isFiltered = hasActiveFilters(filters);
@@ -187,7 +141,7 @@ export function AssetFilterBar({ filters }: { filters: AssetFilters }) {
           value={filters.category ?? ANY}
           placeholder="Any category"
           anyLabel="Any category"
-          onChange={(value) => commit({ category: value })}
+          onChange={(value) => commit({ category: orNull(value) })}
           options={ASSET_CATEGORIES.map((option) => ({ ...option }))}
         />
 
@@ -196,7 +150,7 @@ export function AssetFilterBar({ filters }: { filters: AssetFilters }) {
           value={filters.country ?? ANY}
           placeholder="Any country"
           anyLabel="Any country"
-          onChange={(value) => commit({ country: value })}
+          onChange={(value) => commit({ country: orNull(value) })}
           options={COUNTRIES.map((country) => ({
             value: country,
             label: country,
@@ -208,7 +162,7 @@ export function AssetFilterBar({ filters }: { filters: AssetFilters }) {
           value={filters.industry ?? ANY}
           placeholder="Any industry"
           anyLabel="Any industry"
-          onChange={(value) => commit({ industry: value })}
+          onChange={(value) => commit({ industry: orNull(value) })}
           options={INDUSTRIES.map((industry) => ({
             value: industry,
             label: industry,

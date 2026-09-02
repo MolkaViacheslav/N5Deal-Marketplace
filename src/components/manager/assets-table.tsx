@@ -6,11 +6,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge, type badgeVariants } from "@/components/ui/badge";
 import { CategoryBadge } from "@/components/asset/asset-badges";
+import { ModerationStatusBadge } from "@/components/moderation/status-badge";
 import { AssetRowActions } from "@/components/manager/asset-row-actions";
-import { formatEur } from "@/lib/taxonomy";
-import type { VariantProps } from "class-variance-authority";
+import { formatDate, formatEur } from "@/lib/taxonomy";
 import type { AssetCategory, ListingStatus } from "@/generated/prisma/enums";
 
 export type AssetRow = {
@@ -23,18 +22,6 @@ export type AssetRow = {
   listingStatus: ListingStatus;
   createdAt: Date;
   sellerName: string;
-};
-
-const STATUS_VARIANT: Record<ListingStatus, VariantProps<typeof badgeVariants>["variant"]> = {
-  ACTIVE: "success",
-  SUSPENDED: "secondary",
-  REMOVED: "destructive",
-};
-
-const STATUS_LABEL: Record<ListingStatus, string> = {
-  ACTIVE: "Active",
-  SUSPENDED: "Suspended",
-  REMOVED: "Removed",
 };
 
 export function AssetsTable({ assets }: { assets: AssetRow[] }) {
@@ -77,18 +64,11 @@ export function AssetsTable({ assets }: { assets: AssetRow[] }) {
               <TableCell>{asset.industry}</TableCell>
               <TableCell>{formatEur(asset.askingPrice)}</TableCell>
               <TableCell>
-                <Badge variant={STATUS_VARIANT[asset.listingStatus]}>
-                  {STATUS_LABEL[asset.listingStatus]}
-                </Badge>
+                <ModerationStatusBadge status={asset.listingStatus} />
               </TableCell>
               <TableCell className="text-muted-foreground">{asset.sellerName}</TableCell>
               <TableCell className="text-muted-foreground">
-                {asset.createdAt.toLocaleDateString("en-IE", {
-                  timeZone: "Europe/Dublin",
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })}
+                {formatDate(asset.createdAt)}
               </TableCell>
               <TableCell className="text-right">
                 <AssetRowActions

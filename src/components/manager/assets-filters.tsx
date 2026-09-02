@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -11,74 +10,79 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ASSET_CATEGORIES, COUNTRIES } from "@/lib/taxonomy";
+import {
+  ASSET_CATEGORIES,
+  COUNTRIES,
+  MODERATION_STATUSES,
+} from "@/lib/taxonomy";
+import { useUrlFilters } from "@/lib/use-url-filters";
+import type { ManagerAssetFilters } from "@/app/manager/assets/filters";
 
-const STATUS_OPTIONS = [
-  { value: "ALL", label: "All statuses" },
-  { value: "ACTIVE", label: "Active" },
-  { value: "SUSPENDED", label: "Suspended" },
-  { value: "REMOVED", label: "Removed" },
-] as const;
+const ALL = "ALL";
+const orNull = (value: string) => (value === ALL ? null : value);
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 /**
- * Same URL-as-state pattern as ParticipantsFilters — see the comment there.
- * Built standalone rather than shared with the (not-yet-built) buyer filter
- * bar: this table's columns and status vocabulary (ListingStatus, not just
- * "active") are manager-specific.
+ * Same URL-as-state contract as ParticipantsFilters and the buyer bar — see
+ * the note in `lib/use-url-filters.ts` for why every write is built on the
+ * last URL this component issued rather than on `useSearchParams()`.
+ *
+ * Kept separate from the buyer's filter bar rather than shared: this table
+ * filters on `listingStatus`, a moderation state a buyer never sees, and has
+ * no price or industry controls. What the two genuinely share is the URL
+ * mechanics, and that is what was extracted.
  */
-export function AssetsFilters() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [search, setSearch] = useState(searchParams.get("search") ?? "");
-  // Same stale-closure guard as ParticipantsFilters — see the comment there.
-  const lastPushedSearch = useRef(search);
+export function AssetsFilters({ filters }: { filters: ManagerAssetFilters }) {
+  const { commit } = useUrlFilters();
 
-  const setParam = useCallback(
-    (key: string, value: string) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (!value || value === "ALL") {
-        params.delete(key);
-      } else {
-        params.set(key, value);
-      }
-      router.push(`${pathname}?${params.toString()}`);
-    },
-    [router, pathname, searchParams]
+  const searchRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
   );
+  const lastPushedSearch = useRef(filters.search);
 
   useEffect(() => {
-    const current = searchParams.get("search") ?? "";
-    if (current !== lastPushedSearch.current) {
-      lastPushedSearch.current = current;
-      setSearch(current);
-      return;
+    if (filters.search === lastPushedSearch.current) return;
+    lastPushedSearch.current = filters.search;
+
+    if (searchRef.current && searchRef.current.value !== filters.search) {
+      searchRef.current.value = filters.search;
     }
-    if (search === current) return;
-    const timeout = setTimeout(() => {
-      lastPushedSearch.current = search;
-      setParam("search", search);
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [search, searchParams, setParam]);
+  }, [filters.search]);
+
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
+
+  function onSearchInput() {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const value = searchRef.current?.value ?? "";
+      lastPushedSearch.current = value;
+      commit({ search: value });
+    }, SEARCH_DEBOUNCE_MS);
+  }
 
   return (
     <div className="flex flex-wrap gap-3">
       <Input
-        placeholder="Search by title…"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
+        ref={searchRef}
+        type="search"
+        defaultValue={filters.search}
+        onChange={onSearchInput}
+        placeholder="Search title or industry…"
+        aria-label="Search listings"
         className="max-w-xs"
       />
+
       <Select
-        value={searchParams.get("category") ?? "ALL"}
-        onValueChange={(value) => setParam("category", value)}
+        value={filters.category ?? ALL}
+        onValueChange={(value) => commit({ category: orNull(value) })}
       >
-        <SelectTrigger>
+        <SelectTrigger aria-label="Category">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="ALL">All categories</SelectItem>
+          <SelectItem value={ALL}>All categories</SelectItem>
           {ASSET_CATEGORIES.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
@@ -86,15 +90,16 @@ export function AssetsFilters() {
           ))}
         </SelectContent>
       </Select>
+
       <Select
-        value={searchParams.get("country") ?? "ALL"}
-        onValueChange={(value) => setParam("country", value)}
+        value={filters.country ?? ALL}
+        onValueChange={(value) => commit({ country: orNull(value) })}
       >
-        <SelectTrigger>
+        <SelectTrigger aria-label="Country">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="ALL">All countries</SelectItem>
+          <SelectItem value={ALL}>All countries</SelectItem>
           {COUNTRIES.map((country) => (
             <SelectItem key={country} value={country}>
               {country}
@@ -102,17 +107,19 @@ export function AssetsFilters() {
           ))}
         </SelectContent>
       </Select>
+
       <Select
-        value={searchParams.get("listingStatus") ?? "ALL"}
-        onValueChange={(value) => setParam("listingStatus", value)}
+        value={filters.listingStatus ?? ALL}
+        onValueChange={(value) => commit({ listingStatus: orNull(value) })}
       >
-        <SelectTrigger>
+        <SelectTrigger aria-label="Listing status">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {STATUS_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
+          <SelectItem value={ALL}>All statuses</SelectItem>
+          {MODERATION_STATUSES.map((status) => (
+            <SelectItem key={status.value} value={status.value}>
+              {status.label}
             </SelectItem>
           ))}
         </SelectContent>
