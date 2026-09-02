@@ -34,7 +34,7 @@ const SEARCH_DEBOUNCE_MS = 300;
  * mechanics, and that is what was extracted.
  */
 export function AssetsFilters({ filters }: { filters: ManagerAssetFilters }) {
-  const { commit } = useUrlFilters();
+  const { commit, isPending } = useUrlFilters();
 
   const searchRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -63,7 +63,11 @@ export function AssetsFilters({ filters }: { filters: ManagerAssetFilters }) {
   }
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <div
+      className="flex flex-wrap gap-3 transition-opacity data-[pending]:opacity-60"
+      data-pending={isPending ? "" : undefined}
+      aria-busy={isPending}
+    >
       <Input
         ref={searchRef}
         type="search"

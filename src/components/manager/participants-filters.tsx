@@ -41,7 +41,7 @@ export function ParticipantsFilters({
 }: {
   filters: ParticipantFilters;
 }) {
-  const { commit } = useUrlFilters();
+  const { commit, isPending } = useUrlFilters();
 
   const searchRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -74,8 +74,14 @@ export function ParticipantsFilters({
     }, SEARCH_DEBOUNCE_MS);
   }
 
+  // Same pending treatment as the buyer bar, so a filter change looks the
+  // same everywhere while the server round-trip is in flight.
   return (
-    <div className="flex flex-wrap gap-3">
+    <div
+      className="flex flex-wrap gap-3 transition-opacity data-[pending]:opacity-60"
+      data-pending={isPending ? "" : undefined}
+      aria-busy={isPending}
+    >
       <Input
         ref={searchRef}
         type="search"
