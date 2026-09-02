@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import type { Prisma } from "@/generated/prisma/client";
 import type { ActionResult } from "@/lib/action-result";
 import { requireRole } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
@@ -31,6 +32,56 @@ const moderateUserSchema = z.object({
 type ModerateUserInput = z.infer<typeof moderateUserSchema>;
 
 class GuardError extends Error {}
+
+/**
+ * Undo the seller-suspension cascade — and only that.
+ *
+ * A seller's listing can be SUSPENDED for two unrelated reasons: because this
+ * cascade suspended it along with its seller, or because a manager suspended
+ * that one listing on its own merits. Restoring both — which a bare
+ * `updateMany({ sellerId, listingStatus: "SUSPENDED" })` does — silently
+ * un-moderates the second kind. Demonstrated against the seed: reactivating
+ * the seller of the "guaranteed regulatory approval" listing put that listing
+ * back in front of every buyer, three days after a manager had pulled it.
+ *
+ * The two are told apart by the audit log: a directly-suspended listing has a
+ * SUSPEND_ASSET row of its own, and a cascaded one does not. That is exact
+ * *while this build has no asset-level Reactivate* (plan.md scopes
+ * /manager/assets to Suspend/Remove), because there is then no way for such a
+ * row to be stale. **If asset-level Reactivate is ever added, this rule has to
+ * become an explicit flag on Asset instead** — the audit log would no longer
+ * say what is true now, only what was true once.
+ */
+async function restoreCascadedListings(
+  tx: Prisma.TransactionClient,
+  sellerId: string
+): Promise<void> {
+  const suspended = await tx.asset.findMany({
+    where: { sellerId, listingStatus: "SUSPENDED" },
+    select: { id: true },
+  });
+  if (suspended.length === 0) return;
+
+  const moderated = await tx.auditLog.findMany({
+    where: {
+      action: "SUSPEND_ASSET",
+      targetId: { in: suspended.map((asset) => asset.id) },
+    },
+    select: { targetId: true },
+  });
+
+  const moderatedIds = new Set(moderated.map((row) => row.targetId));
+  const toRestore = suspended
+    .filter((asset) => !moderatedIds.has(asset.id))
+    .map((asset) => asset.id);
+
+  if (toRestore.length === 0) return;
+
+  await tx.asset.updateMany({
+    where: { id: { in: toRestore } },
+    data: { listingStatus: "ACTIVE" },
+  });
+}
 
 function revalidateManagerPaths() {
   revalidatePath("/manager");
@@ -160,14 +211,8 @@ export async function reactivateUser(input: ModerateUserInput): Promise<ActionRe
 
       await tx.user.update({ where: { id: userId }, data: { status: "ACTIVE" } });
 
-      // Only restores listings this same cascade suspended — an asset removed
-      // outright is left alone, matching "Remove is not reversible" at the
-      // asset level too.
       if (target.role === "SELLER") {
-        await tx.asset.updateMany({
-          where: { sellerId: userId, listingStatus: "SUSPENDED" },
-          data: { listingStatus: "ACTIVE" },
-        });
+        await restoreCascadedListings(tx, userId);
       }
 
       await logAction(tx, {
