@@ -1,0 +1,108 @@
+import Link from "next/link";
+
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/taxonomy";
+
+/**
+ * One inquiry, as the seller sees it.
+ *
+ * A near-twin of `components/buyer/inquiry-card.tsx`, differing only in where
+ * its links point: a listing goes to the seller's own edit screen, because
+ * `/buyer/assets/[id]` is a route `requireRole("BUYER")` would bounce them out
+ * of. The right end state is one shared card taking an `assetHref` prop — that
+ * extraction belongs to a consistency pass after this phase merges, alongside
+ * the duplicated message bounds in `seller/buyers/inquiry-schema.ts`.
+ */
+export type SellerInquiryCardData = {
+  id: string;
+  message: string;
+  createdAt: Date;
+  counterparty: { name: string; email: string; companyName: string | null };
+  asset: { id: string; title: string } | null;
+};
+
+export function SellerInquiryCard({
+  inquiry,
+  direction,
+}: {
+  inquiry: SellerInquiryCardData;
+  direction: "sent" | "received";
+}) {
+  const { counterparty, asset } = inquiry;
+  const who = counterparty.companyName ?? counterparty.name;
+
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <div className="min-w-0">
+            <p className="font-medium">
+              <span className="text-muted-foreground">
+                {direction === "sent" ? "To " : "From "}
+              </span>
+              {who}
+            </p>
+            {/* The reply channel. There is no in-app thread — an Inquiry is one
+                message — so the address is not a detail, it is how the
+                conversation continues at all. Shown here and not on
+                /seller/buyers precisely because a message has been exchanged. */}
+            <a
+              href={`mailto:${counterparty.email}`}
+              className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              {counterparty.email}
+            </a>
+          </div>
+          <time
+            dateTime={inquiry.createdAt.toISOString()}
+            className="text-xs text-muted-foreground"
+          >
+            {formatWhen(inquiry.createdAt)}
+          </time>
+        </div>
+
+        {asset ? (
+          <Link
+            href={`/seller/assets/${asset.id}/edit`}
+            className="inline-block text-sm text-primary underline-offset-4 hover:underline"
+          >
+            {asset.title}
+          </Link>
+        ) : (
+          // Every inquiry a seller *sends* lands here: `contactBuyer` writes
+          // `assetId: null` because the approach is about the buyer's profile,
+          // not one listing. A real state, so it gets a label of its own.
+          <Badge variant="outline">General enquiry — no listing</Badge>
+        )}
+
+        <p className="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+          {inquiry.message}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+const RELATIVE = new Intl.RelativeTimeFormat("en-IE", { numeric: "auto" });
+
+/**
+ * Relative for the first week, absolute after that — "13 days ago" is harder to
+ * place than a date, and beyond a month it stops meaning anything at all.
+ *
+ * Computed on the server, so it is the render time that anchors it. At this
+ * scale that's fine; a long-lived tab would need a client component to keep
+ * ticking, which is not worth a dependency here.
+ */
+function formatWhen(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const diffHours = Math.round(diffMs / 3_600_000);
+
+  if (diffHours < 1) return "just now";
+  if (diffHours < 24) return RELATIVE.format(-diffHours, "hour");
+
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays <= 7) return RELATIVE.format(-diffDays, "day");
+
+  return formatDate(date);
+}

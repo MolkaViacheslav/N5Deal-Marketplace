@@ -8,13 +8,19 @@ Persistent context for Claude Code in this repo. Read it before making changes. 
 
 ## Where this stands
 
-Phases 0–4 and 6 are done and merged into `main`; **Phase 5 (seller flows) is next**, then 7–10. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why.
+Phases 0–6 are done; **Phase 7 (smart matching) is next**, then 8–10. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why.
 
 Phases 3–4 (buyer) and 6 (manager) were built in parallel in two worktrees off the same base and merged with `--no-ff`. They touched disjoint files apart from `plan.md`, which merged cleanly. If that pattern is repeated, keep it that way: one phase per worktree, and expect `plan.md` to be the only shared file.
 
-What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, the signed-in shell (header, per-role nav, role badge, sign-out), the whole Buyer section (browse with URL-driven filters, listing detail, profile, inquiries) and the whole Manager section (overview + audit log, participants, asset moderation).
+What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, the signed-in shell (header, per-role nav, role badge, sign-out), the whole Buyer section (browse with URL-driven filters, listing detail, profile, inquiries), the whole Manager section (overview + audit log, participants, asset moderation) and the whole Seller section (own listings, the asset form, buyer browse, buyer profile + contact, inquiries).
 
-**The three seller routes are placeholders.** `src/app/seller/**/page.tsx` render `<PhasePlaceholder>` — routing, guards and chrome are real, the screens are not. Phase 5 replaces them. `src/app/page.tsx` is likewise a throwaway proof page until Phase 9.
+All nine placeholder routes are now real screens; `PhasePlaceholder` itself is unused and can go whenever something else touches `components/layout/`. `src/app/page.tsx` is still a throwaway proof page until Phase 9.
+
+Phase 5 additions worth knowing before touching the seller side:
+
+- `src/app/seller/assets/schema.ts` — `assetSchema` (the discriminated union) **and** `sanitizeByCategory()`, which returns every column a seller controls with the other categories' fields explicitly `null`. Both `createAsset` and `updateAsset` write through it, so they cannot drift. It deliberately carries no `sellerId` and no `listingStatus`: ownership comes from the session, and moderation state is the manager's — that absence is what stops a seller editing a suspended listing back into circulation.
+- A seller's "Withdraw" is a **soft** delete (`listingStatus: "REMOVED"`) and writes **no** `AuditLog` row. `Inquiry.asset` has no explicit `onDelete`, so Prisma would `SetNull` and rewrite a buyer's message history; and `lib/audit.ts` is for manager moderation, not seller housekeeping.
+- `components/seller/inquiry-card.tsx` is a near-twin of the buyer's, differing only in link targets. Merging the two into `components/inquiry/` with an `assetHref` prop is the outstanding consistency pass — see the note at the end of Phase 5 in `plan.md`.
 
 Reusable pieces the seller screens should not rebuild:
 
@@ -25,7 +31,7 @@ Reusable pieces the seller screens should not rebuild:
 - `src/lib/taxonomy.ts` — the closed vocabularies *and* the display formatters: `formatEur`, `formatEurCompact`, `formatDate`, `formatDateTime`. Never build an `Intl` formatter at a call site — dates in particular must stay pinned to one time zone, or a Vercel function in another region renders the same timestamp a day apart on two screens.
 - `src/lib/search-params.ts` — `firstValue` / `oneOf` / `searchText`. Every list screen reads the query string through these: a repeated key is one value, an unknown value is dropped rather than rejected, free text is capped.
 - `src/lib/use-url-filters.ts` — the URL-writing half of every filter bar. It exists because the naive version is wrong in two ways that are not visible in review: a write must be built on the last URL *the bar itself* issued (`useSearchParams()` returns the pre-navigation params until the transition commits, so two quick changes drop the first), and a debounced field must `replace`, not `push`.
-- `src/app/{buyer/assets,manager/assets,manager/participants}/filters.ts` — one `filters.ts` per list screen: `parse*Filters` + `build*Where`. The page stays thin, the *parsed* object drives both the query and the controls, and the bar therefore cannot show a filter the list isn't applying.
+- `src/app/{buyer/assets,manager/assets,manager/participants,seller/buyers}/filters.ts` — one `filters.ts` per list screen: `parse*Filters` + `build*Where`. The page stays thin, the *parsed* object drives both the query and the controls, and the bar therefore cannot show a filter the list isn't applying. Two of them (`buyer/assets`, `seller/buyers`) also export a `build*Query`, which is what lets a detail page's back link restore the exact list its visitor came from.
 
 ## Operations
 
