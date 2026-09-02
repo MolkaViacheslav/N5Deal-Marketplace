@@ -83,10 +83,17 @@ async function restoreCascadedListings(
   });
 }
 
+// A Suspend/Remove/Reactivate on a SELLER cascades to their listings
+// (`restoreCascadedListings` above, and the inline `updateMany` calls below),
+// which changes what buyer browse shows and what the seller's own table
+// shows — so both get busted unconditionally rather than threading the
+// target's role through just to skip them for a buyer.
 function revalidateManagerPaths() {
   revalidatePath("/manager");
   revalidatePath("/manager/participants");
   revalidatePath("/manager/assets");
+  revalidatePath("/buyer/assets");
+  revalidatePath("/seller/assets");
 }
 
 async function runGuarded(transaction: () => Promise<void>): Promise<ActionResult> {

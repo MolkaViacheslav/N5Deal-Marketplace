@@ -68,19 +68,29 @@ export function ContactBuyerDialog({
     setFormError(null);
 
     startSending(async () => {
-      const result = await contactBuyer(values);
+      try {
+        const result = await contactBuyer(values);
 
-      if (!result.success) {
-        setFormError(result.error);
-        return;
+        if (!result.success) {
+          setFormError(result.error);
+          return;
+        }
+
+        setSent(true);
+        setOpen(false);
+        reset({ buyerId, message: "" });
+        toast.success("Message sent", {
+          description: `${buyerLabel} will see it under their inquiries.`,
+        });
+      } catch (err) {
+        // See the matching comment in components/buyer/contact-dialog.tsx: a
+        // genuinely unexpected failure, kept from reaching the nearest error
+        // boundary so the seller's half-written message isn't lost with it.
+        const message =
+          err instanceof Error ? err.message : "That message could not be sent.";
+        setFormError(message);
+        toast.error(message);
       }
-
-      setSent(true);
-      setOpen(false);
-      reset({ buyerId, message: "" });
-      toast.success("Message sent", {
-        description: `${buyerLabel} will see it under their inquiries.`,
-      });
     });
   }
 

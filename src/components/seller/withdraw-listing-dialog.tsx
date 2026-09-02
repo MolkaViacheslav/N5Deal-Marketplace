@@ -47,16 +47,25 @@ export function WithdrawListingDialog({
 
   function onConfirm() {
     startTransition(async () => {
-      const result = await deleteAsset({ id: assetId });
+      try {
+        const result = await deleteAsset({ id: assetId });
 
-      if (!result.success) {
-        toast.error(result.error);
-        return;
+        if (!result.success) {
+          toast.error(result.error);
+          return;
+        }
+
+        onOpenChange(false);
+        toast.success(`”${title}” was withdrawn.`);
+        router.refresh();
+      } catch (err) {
+        // A genuinely unexpected failure — caught here rather than left to
+        // propagate into the nearest error boundary, which would tear down
+        // the seller's whole listings table over one failed withdrawal.
+        const message =
+          err instanceof Error ? err.message : "Something went wrong.";
+        toast.error(message);
       }
-
-      onOpenChange(false);
-      toast.success(`“${title}” was withdrawn.`);
-      router.refresh();
     });
   }
 

@@ -67,6 +67,10 @@ export async function createInquiry(input: unknown): Promise<ActionResult> {
   });
 
   revalidatePath("/buyer/inquiries");
+  // It lands in the seller's Received tab the moment this succeeds — the
+  // mirror of what `contactBuyer` in app/seller/buyers/actions.ts already
+  // does for the other direction.
+  revalidatePath("/seller/inquiries");
 
   return { success: true };
 }

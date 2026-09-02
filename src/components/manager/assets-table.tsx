@@ -9,6 +9,7 @@ import {
 import { CategoryBadge } from "@/components/asset/asset-badges";
 import { ModerationStatusBadge } from "@/components/moderation/status-badge";
 import { AssetRowActions } from "@/components/manager/asset-row-actions";
+import { ManagerAssetsEmptyState } from "@/components/manager/assets-empty-state";
 import { formatDate, formatEur } from "@/lib/taxonomy";
 import type { AssetCategory, ListingStatus } from "@/generated/prisma/enums";
 
@@ -24,13 +25,15 @@ export type AssetRow = {
   sellerName: string;
 };
 
-export function AssetsTable({ assets }: { assets: AssetRow[] }) {
+export function AssetsTable({
+  assets,
+  isFiltered,
+}: {
+  assets: AssetRow[];
+  isFiltered: boolean;
+}) {
   if (assets.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-        No listings match these filters.
-      </p>
-    );
+    return <ManagerAssetsEmptyState isFiltered={isFiltered} />;
   }
 
   return (

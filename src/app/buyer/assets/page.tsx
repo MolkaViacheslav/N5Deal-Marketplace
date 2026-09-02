@@ -159,7 +159,7 @@ export default async function BuyerAssetsPage({
       {scored.length === 0 ? (
         <AssetsEmptyState isFiltered={isFiltered} />
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {scored.map((asset) => (
             <li key={asset.id}>
               <AssetCard

@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ModerationStatusBadge } from "@/components/moderation/status-badge";
 import { ParticipantRowActions } from "@/components/manager/participant-row-actions";
+import { ManagerParticipantsEmptyState } from "@/components/manager/participants-empty-state";
 import { ROLE_LABEL } from "@/lib/nav-items";
 import { formatDate } from "@/lib/taxonomy";
 import type { Role, UserStatus } from "@/generated/prisma/enums";
@@ -23,13 +24,15 @@ export type ParticipantRow = {
   createdAt: Date;
 };
 
-export function ParticipantsTable({ participants }: { participants: ParticipantRow[] }) {
+export function ParticipantsTable({
+  participants,
+  isFiltered,
+}: {
+  participants: ParticipantRow[];
+  isFiltered: boolean;
+}) {
   if (participants.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-        No participants match these filters.
-      </p>
-    );
+    return <ManagerParticipantsEmptyState isFiltered={isFiltered} />;
   }
 
   return (

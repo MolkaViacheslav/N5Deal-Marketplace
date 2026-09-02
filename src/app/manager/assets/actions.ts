@@ -27,19 +27,29 @@ type ModerateAssetInput = z.infer<typeof moderateAssetSchema>;
 
 class GuardError extends Error {}
 
-function revalidateManagerPaths() {
+// Mirrors `revalidateListingPaths` in ../../seller/assets/actions.ts — a
+// listing's moderation state is the one thing both buyer browse and the
+// seller's own table render, so a manager's Suspend/Remove has to bust the
+// same three surfaces a seller's own edit does.
+function revalidateManagerPaths(assetId?: string) {
   revalidatePath("/manager");
   revalidatePath("/manager/assets");
+  revalidatePath("/buyer/assets");
+  revalidatePath("/seller/assets");
+  if (assetId) revalidatePath(`/buyer/assets/${assetId}`);
 }
 
-async function runGuarded(transaction: () => Promise<void>): Promise<ActionResult> {
+async function runGuarded(
+  transaction: () => Promise<void>,
+  assetId?: string
+): Promise<ActionResult> {
   try {
     await transaction();
   } catch (err) {
     if (err instanceof GuardError) return { success: false, error: err.message };
     throw err;
   }
-  revalidateManagerPaths();
+  revalidateManagerPaths(assetId);
   return { success: true };
 }
 
@@ -67,7 +77,7 @@ export async function suspendAsset(input: ModerateAssetInput): Promise<ActionRes
         reason,
       });
     });
-  });
+  }, assetId);
 }
 
 export async function removeAsset(input: ModerateAssetInput): Promise<ActionResult> {
@@ -94,5 +104,5 @@ export async function removeAsset(input: ModerateAssetInput): Promise<ActionResu
         reason,
       });
     });
-  });
+  }, assetId);
 }

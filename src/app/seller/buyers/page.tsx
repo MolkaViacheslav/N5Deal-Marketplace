@@ -126,7 +126,7 @@ export default async function SellerBuyersPage({
       {scored.length === 0 ? (
         <BuyersEmptyState isFiltered={isFiltered} />
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid gap-4 md:grid-cols-2">
           {scored.map((buyer) => (
             <li key={buyer.id}>
               <BuyerCard

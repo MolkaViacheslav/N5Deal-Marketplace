@@ -29,7 +29,7 @@ export function RecommendedAssets({ assets }: { assets: RecommendedAsset[] }) {
         </p>
       </div>
 
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {assets.map((asset) => (
           <li key={asset.id}>
             <AssetCard asset={asset} matchScore={asset.matchScore} />

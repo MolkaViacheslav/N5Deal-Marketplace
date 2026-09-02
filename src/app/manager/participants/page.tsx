@@ -6,6 +6,7 @@ import { ParticipantsFilters } from "@/components/manager/participants-filters";
 import { ParticipantsTable, type ParticipantRow } from "@/components/manager/participants-table";
 import {
   buildParticipantWhere,
+  hasActiveFilters,
   parseParticipantFilters,
 } from "@/app/manager/participants/filters";
 
@@ -44,7 +45,10 @@ export default async function ParticipantsPage({
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Participants</h1>
       <ParticipantsFilters filters={filters} />
-      <ParticipantsTable participants={participants} />
+      <ParticipantsTable
+        participants={participants}
+        isFiltered={hasActiveFilters(filters)}
+      />
     </div>
   );
 }

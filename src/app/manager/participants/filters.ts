@@ -40,6 +40,12 @@ export function parseParticipantFilters(
   };
 }
 
+/** True when anything is narrowing the table — drives the "Clear all"
+ *  affordance and tells an empty result apart from an empty platform. */
+export function hasActiveFilters(filters: ParticipantFilters): boolean {
+  return Boolean(filters.search || filters.role || filters.status);
+}
+
 export function buildParticipantWhere(
   filters: ParticipantFilters
 ): Prisma.UserWhereInput {

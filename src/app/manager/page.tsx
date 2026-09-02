@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClipboardList } from "lucide-react";
 
 import { requireRole } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
@@ -55,8 +56,26 @@ export default async function ManagerOverviewPage() {
           <CardTitle>Recent moderation activity</CardTitle>
         </CardHeader>
         <CardContent>
+          {/* Inline rather than its own component like the other four empty
+              states: there's exactly one caller, and it already lives inside
+              this Card's own border — a second nested Card would double the
+              framing for no reason. `py-10`, not `py-16`, for the same
+              reason: the surrounding CardHeader already spends some of that
+              vertical space. */}
           {recentActivity.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No moderation actions yet.</p>
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <ClipboardList
+                className="size-8 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <div className="space-y-1">
+                <p className="font-medium">No actions recorded yet</p>
+                <p className="max-w-md text-sm text-muted-foreground">
+                  Suspend, remove or reactivate a participant or a listing and
+                  it will show up here.
+                </p>
+              </div>
+            </div>
           ) : (
             <Table>
               <TableHeader>

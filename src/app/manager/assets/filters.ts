@@ -41,6 +41,17 @@ export function parseManagerAssetFilters(
   };
 }
 
+/** True when anything is narrowing the table — drives the "Clear all"
+ *  affordance and tells an empty result apart from an empty platform. */
+export function hasActiveFilters(filters: ManagerAssetFilters): boolean {
+  return Boolean(
+    filters.search ||
+      filters.category ||
+      filters.country ||
+      filters.listingStatus
+  );
+}
+
 export function buildManagerAssetWhere(
   filters: ManagerAssetFilters
 ): Prisma.AssetWhereInput {

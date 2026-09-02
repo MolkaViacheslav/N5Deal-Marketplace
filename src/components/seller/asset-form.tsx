@@ -208,22 +208,32 @@ export function AssetForm({
     setFormError(null);
 
     startSaving(async () => {
-      const result = isEdit
-        ? await updateAsset({ id: assetId, values })
-        : await createAsset(values);
+      try {
+        const result = isEdit
+          ? await updateAsset({ id: assetId, values })
+          : await createAsset(values);
 
-      if (!result.success) {
-        setFormError(result.error);
-        toast.error(result.error);
-        return;
+        if (!result.success) {
+          setFormError(result.error);
+          toast.error(result.error);
+          return;
+        }
+
+        toast.success(isEdit ? "Listing updated" : "Listing published");
+        // The action returns an ActionResult rather than redirecting — a
+        // `redirect()` inside it throws, which would break that contract — so
+        // the navigation happens here.
+        router.push("/seller/assets");
+        router.refresh();
+      } catch (err) {
+        // A genuinely unexpected failure — caught here rather than left to
+        // propagate into the nearest error boundary, which would replace the
+        // whole page and discard everything typed into this form.
+        const message =
+          err instanceof Error ? err.message : "That listing could not be saved.";
+        setFormError(message);
+        toast.error(message);
       }
-
-      toast.success(isEdit ? "Listing updated" : "Listing published");
-      // The action returns an ActionResult rather than redirecting — a
-      // `redirect()` inside it throws, which would break that contract — so the
-      // navigation happens here.
-      router.push("/seller/assets");
-      router.refresh();
     });
   }
 

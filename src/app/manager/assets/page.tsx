@@ -6,6 +6,7 @@ import { AssetsFilters } from "@/components/manager/assets-filters";
 import { AssetsTable, type AssetRow } from "@/components/manager/assets-table";
 import {
   buildManagerAssetWhere,
+  hasActiveFilters,
   parseManagerAssetFilters,
 } from "@/app/manager/assets/filters";
 
@@ -50,7 +51,7 @@ export default async function ManagerAssetsPage({
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Listings</h1>
       <AssetsFilters filters={filters} />
-      <AssetsTable assets={rows} />
+      <AssetsTable assets={rows} isFiltered={hasActiveFilters(filters)} />
     </div>
   );
 }

@@ -70,24 +70,34 @@ export function ProfileForm({
     setFormError(null);
 
     startSaving(async () => {
-      const result = await upsertBuyerProfile(values);
+      try {
+        const result = await upsertBuyerProfile(values);
 
-      if (!result.success) {
-        setFormError(result.error);
-        return;
+        if (!result.success) {
+          setFormError(result.error);
+          return;
+        }
+
+        toast.success("Profile saved");
+        // Re-baseline the form so `isDirty` goes back to false and the Save
+        // button correctly reads as "nothing to do".
+        //
+        // `getValues()`, not the parsed `values`: the fields hold strings while
+        // Zod hands back numbers, and `reset` sets the dirty baseline as well as
+        // the values. Baselining `budgetMin: 500000` against an input holding
+        // `"500000"` leaves the form permanently dirty on the next keystroke —
+        // including one that types the old value straight back in.
+        reset(getValues());
+        router.refresh();
+      } catch (err) {
+        // A genuinely unexpected failure — caught here rather than left to
+        // propagate into the nearest error boundary, which would replace the
+        // whole page instead of just reporting the save as failed.
+        const message =
+          err instanceof Error ? err.message : "Those details could not be saved.";
+        setFormError(message);
+        toast.error(message);
       }
-
-      toast.success("Profile saved");
-      // Re-baseline the form so `isDirty` goes back to false and the Save
-      // button correctly reads as "nothing to do".
-      //
-      // `getValues()`, not the parsed `values`: the fields hold strings while
-      // Zod hands back numbers, and `reset` sets the dirty baseline as well as
-      // the values. Baselining `budgetMin: 500000` against an input holding
-      // `"500000"` leaves the form permanently dirty on the next keystroke —
-      // including one that types the old value straight back in.
-      reset(getValues());
-      router.refresh();
     });
   }
 

@@ -8,13 +8,20 @@ Persistent context for Claude Code in this repo. Read it before making changes. 
 
 ## Where this stands
 
-Phases 0–8 are done; **9–10 are next**. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why.
+Phases 0–9 are done; **10 is next**. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why.
 
 Phases 3–4 (buyer) and 6 (manager) were built in parallel in two worktrees off the same base and merged with `--no-ff`. They touched disjoint files apart from `plan.md`, which merged cleanly. If that pattern is repeated, keep it that way: one phase per worktree, and expect `plan.md` to be the only shared file.
 
 What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, the signed-in shell (header, per-role nav, role badge, sign-out), the whole Buyer section (browse with URL-driven filters, listing detail, profile, inquiries), the whole Manager section (overview + audit log, participants, asset moderation), the whole Seller section (own listings, the asset form, buyer browse, buyer profile + contact, inquiries) and smart matching on both browse screens (badges, "Recommended for you", "Best match" sorts).
 
-All nine placeholder routes are now real screens; `PhasePlaceholder` itself is unused and can go whenever something else touches `components/layout/`. `src/app/page.tsx` is still a throwaway proof page until Phase 9.
+All nine placeholder routes are now real screens; `PhasePlaceholder` itself is unused and can go whenever something else touches `components/layout/`. `src/app/page.tsx` is still a throwaway proof page — Phase 9's polish scope was loading/error/empty states, toasts and responsiveness across the three signed-in sections, not the signed-out landing page, so this is still pending; likely folded into Phase 10 alongside the README.
+
+Phase 9 additions worth knowing:
+
+- `components/layout/error-state.tsx` / `not-found-state.tsx` are the shared bodies every `error.tsx`/`not-found.tsx` renders — one look, one place to fix it, rather than four near-identical cards each.
+- **A segment's own `not-found.tsx` only fires on an explicit `notFound()` call from within its already-rendered tree.** A URL matching no route at all has no segment tree to attach to, so Next skips straight to the root `app/not-found.tsx` — confirmed in `next build`'s route list, which shows exactly one static `/_not-found`. `buyer/` and `seller/` already had a real trigger (their `[id]` pages call `notFound()`), `manager/` did not, so each role gets a `[...notFound]/page.tsx` that unconditionally calls `notFound()` — it exists purely to give the segment something to match so the nested boundary actually runs.
+- **A client mutation call needs its own `try/catch`, not just an `if (!result.success)` branch.** `ActionResult` covers the failures an action anticipates; a genuinely unexpected throw (a dropped connection, an unhandled Prisma error) rides the promise inside `startTransition` straight to React 19's nearest error boundary, which now that this phase added one means the *whole page* gets replaced instead of a toast and a form that keeps what was typed. `components/manager/moderation-dialog.tsx` had the right shape since Phase 6; the other five mutation call sites (`contact-dialog`, `contact-buyer-dialog`, `profile-form`, `asset-form`, `withdraw-listing-dialog`) now match it.
+- Loading skeletons carry `role="status"`/`aria-live="polite"` plus a `sr-only` "Loading…" on the boundary, with the visible skeleton itself `aria-hidden` — a pure skeleton otherwise announces nothing to a screen reader, unlike the filter bars' existing `aria-busy` treatment.
 
 Phase 5 additions worth knowing before touching the seller side:
 

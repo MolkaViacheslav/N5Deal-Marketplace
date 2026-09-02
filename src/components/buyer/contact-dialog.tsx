@@ -70,19 +70,31 @@ export function ContactDialog({
     setFormError(null);
 
     startSending(async () => {
-      const result = await createInquiry(values);
+      try {
+        const result = await createInquiry(values);
 
-      if (!result.success) {
-        setFormError(result.error);
-        return;
+        if (!result.success) {
+          setFormError(result.error);
+          return;
+        }
+
+        setSent(true);
+        setOpen(false);
+        reset({ assetId, message: "" });
+        toast.success("Message sent", {
+          description: `${sellerLabel} will see it under their inquiries.`,
+        });
+      } catch (err) {
+        // A genuinely unexpected failure (network, an unhandled server error),
+        // not an `ActionResult` failure — caught here rather than left to
+        // propagate into the nearest error boundary, which would replace the
+        // whole page and lose the message the buyer just typed. Same rationale
+        // as `components/manager/moderation-dialog.tsx`.
+        const message =
+          err instanceof Error ? err.message : "That message could not be sent.";
+        setFormError(message);
+        toast.error(message);
       }
-
-      setSent(true);
-      setOpen(false);
-      reset({ assetId, message: "" });
-      toast.success("Message sent", {
-        description: `${sellerLabel} will see it under their inquiries.`,
-      });
     });
   }
 

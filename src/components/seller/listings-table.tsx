@@ -42,7 +42,7 @@ export function ListingsTable({ listings }: { listings: SellerListingRow[] }) {
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border">
+      <div className="rounded-xl border">
         <Table>
           <TableHeader>
             <TableRow>
