@@ -8,17 +8,20 @@ Persistent context for Claude Code in this repo. Read it before making changes. 
 
 ## Where this stands
 
-Phases 0–4 are done; **Phase 5 (seller flows) is next**, and Phase 6 (manager) is being built in parallel in a second worktree. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why.
+Phases 0–4 and 6 are done and merged into `main`; **Phase 5 (seller flows) is next**, then 7–10. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why.
 
-What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, the signed-in shell (header, per-role nav, role badge, sign-out), and the whole Buyer section — browse with URL-driven filters, listing detail, profile, inquiries.
+Phases 3–4 (buyer) and 6 (manager) were built in parallel in two worktrees off the same base and merged with `--no-ff`. They touched disjoint files apart from `plan.md`, which merged cleanly. If that pattern is repeated, keep it that way: one phase per worktree, and expect `plan.md` to be the only shared file.
 
-**The five remaining role routes are placeholders.** `src/app/{seller,manager}/**/page.tsx` render `<PhasePlaceholder>` — routing, guards and chrome are real, the screens are not. Each phase from 5 onward replaces its own placeholder file. `src/app/page.tsx` is likewise a throwaway proof page until Phase 9.
+What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, the signed-in shell (header, per-role nav, role badge, sign-out), the whole Buyer section (browse with URL-driven filters, listing detail, profile, inquiries) and the whole Manager section (overview + audit log, participants, asset moderation).
 
-Reusable pieces the seller and manager screens should not rebuild:
+**The three seller routes are placeholders.** `src/app/seller/**/page.tsx` render `<PhasePlaceholder>` — routing, guards and chrome are real, the screens are not. Phase 5 replaces them. `src/app/page.tsx` is likewise a throwaway proof page until Phase 9.
 
-- `src/components/asset/` — `AssetBadges` (category / business status / country), `AssetCard`, `categoryFacts()`. Role-neutral by design: a manager's asset table renders the *same* category badge as buyer browse, so use `CategoryBadge` rather than a local `<Badge variant="outline">`.
-- `src/lib/action-result.ts` — the `ActionResult` union every Server Action returns. Failures are values, not throws (Next redacts thrown messages in a production build).
-- `src/app/buyer/assets/filters.ts` — the pattern for `searchParams` ⇄ query translation: validate against `taxonomy.ts`, drop what doesn't fit, and render the controls from the parsed object so the bar can never show a filter the list isn't applying.
+Reusable pieces the seller screens should not rebuild:
+
+- `src/components/asset/` — `AssetBadges` (category / business status / country), `AssetCard`, `categoryFacts()`. Role-neutral by design: the manager's asset table renders the *same* `CategoryBadge` as buyer browse. Don't hand-roll a local `<Badge>` for a category or a business status.
+- `src/lib/action-result.ts` — the `ActionResult` union **every** Server Action returns, buyer and manager alike. Failures are values, not throws (Next redacts thrown messages in a production build). There is one spelling of it; don't add a second.
+- `src/lib/audit.ts` — `logAction()`, called inside the same `$transaction` as the change it records.
+- `src/app/buyer/assets/filters.ts` — the pattern for `searchParams` ⇄ query translation: validate against `taxonomy.ts`, drop what doesn't fit, render the controls from the parsed object so a bar can never show a filter the list isn't applying, and build each URL write on the last URL the component itself issued (`useSearchParams()` still returns the pre-navigation params until the transition commits, so two quick changes otherwise drop the first).
 
 ## Operations
 
