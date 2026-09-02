@@ -8,11 +8,17 @@ Persistent context for Claude Code in this repo. Read it before making changes. 
 
 ## Where this stands
 
-Phases 0–2 are done and deployed; **Phase 3 (buyer browse) is next**. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why. The only Phase 0 item still open is **theme tokens**.
+Phases 0–4 are done; **Phase 5 (seller flows) is next**, and Phase 6 (manager) is being built in parallel in a second worktree. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why.
 
-What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, and the signed-in shell (header, per-role nav, role badge, sign-out).
+What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, the signed-in shell (header, per-role nav, role badge, sign-out), and the whole Buyer section — browse with URL-driven filters, listing detail, profile, inquiries.
 
-**The nine role routes are placeholders.** `src/app/{buyer,seller,manager}/**/page.tsx` all render `<PhasePlaceholder>` — routing, guards and chrome are real, the screens are not. Each phase from 3 onward replaces its own placeholder file. `src/app/page.tsx` is likewise a throwaway proof page until Phase 9.
+**The five remaining role routes are placeholders.** `src/app/{seller,manager}/**/page.tsx` render `<PhasePlaceholder>` — routing, guards and chrome are real, the screens are not. Each phase from 5 onward replaces its own placeholder file. `src/app/page.tsx` is likewise a throwaway proof page until Phase 9.
+
+Reusable pieces the seller and manager screens should not rebuild:
+
+- `src/components/asset/` — `AssetBadges` (category / business status / country), `AssetCard`, `categoryFacts()`. Role-neutral by design: a manager's asset table renders the *same* category badge as buyer browse, so use `CategoryBadge` rather than a local `<Badge variant="outline">`.
+- `src/lib/action-result.ts` — the `ActionResult` union every Server Action returns. Failures are values, not throws (Next redacts thrown messages in a production build).
+- `src/app/buyer/assets/filters.ts` — the pattern for `searchParams` ⇄ query translation: validate against `taxonomy.ts`, drop what doesn't fit, and render the controls from the parsed object so the bar can never show a filter the list isn't applying.
 
 ## Operations
 
