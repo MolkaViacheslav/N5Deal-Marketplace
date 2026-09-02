@@ -6,24 +6,43 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   InquiryCard,
   type InquiryCardData,
-} from "@/components/buyer/inquiry-card";
+} from "@/components/inquiry/inquiry-card";
+
+/**
+ * What an empty tab says. The headings are the same for both roles and stay
+ * here; only the sentence underneath and the Sent tab's next step differ, so
+ * only those are props.
+ */
+export type InquiryEmptyCopy = {
+  sentDescription: string;
+  sentAction: { href: string; label: string };
+  receivedDescription: string;
+};
 
 export function InquiryList({
   inquiries,
   direction,
+  assetHref,
+  empty,
 }: {
   inquiries: InquiryCardData[];
   direction: "sent" | "received";
+  assetHref: (assetId: string) => string;
+  empty: InquiryEmptyCopy;
 }) {
   if (inquiries.length === 0) {
-    return <EmptyInquiries direction={direction} />;
+    return <EmptyInquiries direction={direction} copy={empty} />;
   }
 
   return (
     <ul className="space-y-4">
       {inquiries.map((inquiry) => (
         <li key={inquiry.id}>
-          <InquiryCard inquiry={inquiry} direction={direction} />
+          <InquiryCard
+            inquiry={inquiry}
+            direction={direction}
+            assetHref={assetHref}
+          />
         </li>
       ))}
     </ul>
@@ -31,11 +50,16 @@ export function InquiryList({
 }
 
 /**
- * Only the Sent tab gets a call to action: "browse listings" is the actual next
- * step when you haven't written to anyone, whereas an empty inbox is not
- * something the buyer can do anything about directly.
+ * Only the Sent tab gets a call to action: not having written to anyone is
+ * something the user can act on directly, whereas an empty inbox is not.
  */
-function EmptyInquiries({ direction }: { direction: "sent" | "received" }) {
+function EmptyInquiries({
+  direction,
+  copy,
+}: {
+  direction: "sent" | "received";
+  copy: InquiryEmptyCopy;
+}) {
   const isSent = direction === "sent";
   const Icon = isSent ? Send : Inbox;
 
@@ -49,15 +73,13 @@ function EmptyInquiries({ direction }: { direction: "sent" | "received" }) {
             {isSent ? "You haven't contacted anyone yet" : "No messages yet"}
           </p>
           <p className="max-w-md text-sm text-muted-foreground">
-            {isSent
-              ? "Open a listing you're interested in and message the seller directly."
-              : "When a seller reaches out about your profile, their message lands here."}
+            {isSent ? copy.sentDescription : copy.receivedDescription}
           </p>
         </div>
 
         {isSent && (
           <Button asChild variant="outline" size="sm" className="mt-1">
-            <Link href="/buyer/assets">Browse listings</Link>
+            <Link href={copy.sentAction.href}>{copy.sentAction.label}</Link>
           </Button>
         )}
       </CardContent>

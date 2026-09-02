@@ -49,7 +49,16 @@ const SEARCH_DEBOUNCE_MS = 300;
  * because the bar renders the same parsed object, it also shows "Any country"
  * instead of displaying a filter that isn't actually applied.
  */
-export function AssetFilterBar({ filters }: { filters: AssetFilters }) {
+export function AssetFilterBar({
+  filters,
+  hasProfile,
+}: {
+  filters: AssetFilters;
+  /** Without a profile there is nothing to score listings against, so "Best
+   *  match" is not offered — the same rule as everywhere else in this bar: it
+   *  never shows a choice the list behind it would not honour. */
+  hasProfile: boolean;
+}) {
   const { commit, clearAll: clearParams, isPending } = useUrlFilters();
 
   const searchRef = useRef<HTMLInputElement>(null);
@@ -95,6 +104,10 @@ export function AssetFilterBar({ filters }: { filters: AssetFilters }) {
 
   const isFiltered = hasActiveFilters(filters);
 
+  const sortOptions = SORT_OPTIONS.filter(
+    (option) => hasProfile || option.value !== "best-match"
+  ).map((option) => ({ ...option }));
+
   // `data-pending` both drives the dimming below and stays readable from a
   // test, which a bare `isPending && "opacity-60"` would not be.
   return (
@@ -129,7 +142,7 @@ export function AssetFilterBar({ filters }: { filters: AssetFilters }) {
           onChange={(value) =>
             commit({ sort: value === DEFAULT_SORT ? null : value })
           }
-          options={SORT_OPTIONS.map((option) => ({ ...option }))}
+          options={sortOptions}
           includeAny={false}
           className="sm:w-52"
         />

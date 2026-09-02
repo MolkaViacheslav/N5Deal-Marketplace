@@ -1,15 +1,14 @@
 import { z } from "zod";
 
-export const MESSAGE_MIN = 10;
-export const MESSAGE_MAX = 1000;
+import { messageField } from "@/lib/inquiry-message";
+
+// Re-exported so the contact dialog can render the character counter without
+// importing from two modules to describe one field.
+export { MESSAGE_MIN, MESSAGE_MAX } from "@/lib/inquiry-message";
 
 export const inquirySchema = z.object({
   assetId: z.string().min(1),
-  message: z
-    .string()
-    .trim()
-    .min(MESSAGE_MIN, `Say a little more — at least ${MESSAGE_MIN} characters.`)
-    .max(MESSAGE_MAX, `Keep it under ${MESSAGE_MAX} characters.`),
+  message: messageField,
 });
 
 // Note what is absent: no recipient. `toUserId` is derived from the asset on

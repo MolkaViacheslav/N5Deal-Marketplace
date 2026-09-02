@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { MatchBadge } from "@/components/match/match-badge";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -31,8 +32,9 @@ const VISIBLE_CHIPS = 4;
  * A buyer, as a seller browses them — the mirror of `AssetCard`.
  *
  * A card rather than a table row because a mandate is chips plus prose, which a
- * table flattens into unreadable columns. Phase 7 hangs the match badge here,
- * the same way `AssetCard` carries one for the buyer side.
+ * table flattens into unreadable columns. It carries the match badge the same
+ * way `AssetCard` does for the buyer side — the same component, so the two
+ * cannot drift into different colours for the same number.
  *
  * Deliberately no email. The seller opens the conversation through an inquiry
  * and the buyer's address is revealed to them when they reply — the same shape
@@ -40,9 +42,14 @@ const VISIBLE_CHIPS = 4;
  */
 export function BuyerCard({
   buyer,
+  matchScore,
   listQuery = "",
 }: {
   buyer: BuyerCardData;
+  /** The best this buyer scores against any of the seller's listings. Absent —
+   *  no profile to score, or nothing published to score it against — means no
+   *  badge at all, never a "0% match". */
+  matchScore?: number;
   /** The list's canonical query string, carried onto the profile URL so its
    *  back link restores the filters the seller actually had. */
   listQuery?: string;
@@ -53,16 +60,25 @@ export function BuyerCard({
   return (
     <Card className="group/buyer relative h-full transition-shadow hover:shadow-md focus-within:ring-2 focus-within:ring-ring">
       <CardHeader>
-        <CardTitle>
-          {/* Stretched link over the whole card (anchored to the `relative`
-              above), while the accessible name stays just the buyer. */}
-          <Link
-            href={`/seller/buyers/${buyer.id}${listQuery ? `?${listQuery}` : ""}`}
-            className="line-clamp-2 outline-none after:absolute after:inset-0"
-          >
-            {who}
-          </Link>
-        </CardTitle>
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="min-w-0">
+            {/* Stretched link over the whole card (anchored to the `relative`
+                above), while the accessible name stays just the buyer. */}
+            <Link
+              href={`/seller/buyers/${buyer.id}${listQuery ? `?${listQuery}` : ""}`}
+              className="line-clamp-2 outline-none after:absolute after:inset-0"
+            >
+              {who}
+            </Link>
+          </CardTitle>
+
+          {matchScore !== undefined && (
+            <MatchBadge
+              score={matchScore}
+              context="against your best-fitting listing"
+            />
+          )}
+        </div>
         {buyer.companyName && (
           <p className="text-sm text-muted-foreground">{buyer.name}</p>
         )}

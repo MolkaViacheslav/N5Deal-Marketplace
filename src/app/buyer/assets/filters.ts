@@ -22,6 +22,11 @@ import type { AssetCategory } from "@/generated/prisma/enums";
 
 export const SORT_OPTIONS = [
   { value: "newest", label: "Newest first" },
+  // Applied in JS after the fetch, not in SQL — the score is computed from the
+  // buyer's profile at render time and has no column to order by. The page
+  // drops it back to the default when there is no profile to score against, and
+  // the filter bar hides the option in that case, so the two cannot disagree.
+  { value: "best-match", label: "Best match" },
   { value: "price_asc", label: "Price: low to high" },
   { value: "price_desc", label: "Price: high to low" },
 ] as const;
@@ -160,6 +165,10 @@ export function buildAssetOrderBy(
       return [{ askingPrice: "asc" }, { createdAt: "desc" }];
     case "price_desc":
       return [{ askingPrice: "desc" }, { createdAt: "desc" }];
+    // "best-match" is re-sorted in JS afterwards. Newest-first is what it is
+    // re-sorted *from*: `Array.prototype.sort` is stable, so listings on the
+    // same score come out newest first rather than in an arbitrary order.
+    case "best-match":
     case "newest":
       return [{ createdAt: "desc" }];
   }

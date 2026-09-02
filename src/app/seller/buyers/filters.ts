@@ -14,12 +14,28 @@ import { firstValue, oneOf, searchText, type RawSearchParams } from "@/lib/searc
 import { INDUSTRIES, REGIONS } from "@/lib/taxonomy";
 import type { Prisma } from "@/generated/prisma/client";
 
+export const SORT_OPTIONS = [
+  { value: "recent", label: "Recently joined" },
+  // Applied in JS after the fetch: a buyer's score is the best they reach
+  // against any of this seller's listings, which is not something the database
+  // can order by. The page drops it back to the default when the seller has no
+  // listings, and the filter bar hides the option in that case.
+  { value: "best-match", label: "Best match" },
+] as const;
+
+export type SellerBuyerSort = (typeof SORT_OPTIONS)[number]["value"];
+
+/** What an absent `sort` means. Kept out of the URL so a shared link carries
+ *  only the choices the seller actually made. */
+export const DEFAULT_SORT: SellerBuyerSort = "recent";
+
 export type SellerBuyerFilters = {
   search: string;
   industry: string | null;
   region: string | null;
   /** An asking price. Matches buyers whose budget range covers it. */
   budgetFor: number | null;
+  sort: SellerBuyerSort;
 };
 
 /**
@@ -36,6 +52,8 @@ export function positiveInt(raw: string | string[] | undefined): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+const SORT_VALUES = SORT_OPTIONS.map((option) => option.value);
+
 export function parseSellerBuyerFilters(
   params: RawSearchParams
 ): SellerBuyerFilters {
@@ -44,11 +62,14 @@ export function parseSellerBuyerFilters(
     industry: oneOf(params.industry, INDUSTRIES),
     region: oneOf(params.region, REGIONS),
     budgetFor: positiveInt(params.budgetFor),
+    sort: oneOf(params.sort, SORT_VALUES) ?? DEFAULT_SORT,
   };
 }
 
 /** True when any filter narrows the list — tells "nobody matches" apart from
- *  "there are no buyers", which are different answers needing different copy. */
+ *  "there are no buyers", which are different answers needing different copy.
+ *  Sort is not a filter: it reorders the same rows, so it does not belong here
+ *  and must not make an unfiltered list claim to be filtered. */
 export function hasActiveFilters(filters: SellerBuyerFilters): boolean {
   return Boolean(
     filters.search || filters.industry || filters.region || filters.budgetFor
@@ -67,6 +88,7 @@ export function buildBuyersQuery(filters: SellerBuyerFilters): string {
   if (filters.budgetFor !== null) {
     params.set("budgetFor", String(filters.budgetFor));
   }
+  if (filters.sort !== DEFAULT_SORT) params.set("sort", filters.sort);
 
   return params.toString();
 }

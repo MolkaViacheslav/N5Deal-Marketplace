@@ -4,6 +4,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/taxonomy";
 
+/**
+ * One inquiry, for either role.
+ *
+ * This was two near-identical files (`components/{buyer,seller}/inquiry-card`)
+ * until Phase 7's consistency pass. They differed in exactly one thing — where
+ * a listing link points — because `/buyer/assets/[id]` is a route
+ * `requireRole("BUYER")` would bounce a seller out of, and a seller's own
+ * listing belongs on their edit screen. That difference is now a prop.
+ */
 export type InquiryCardData = {
   id: string;
   message: string;
@@ -15,9 +24,15 @@ export type InquiryCardData = {
 export function InquiryCard({
   inquiry,
   direction,
+  assetHref,
 }: {
   inquiry: InquiryCardData;
   direction: "sent" | "received";
+  /** Where this role's listing link points. A function rather than a base path
+   *  because the two are not the same shape — `/buyer/assets/[id]` against
+   *  `/seller/assets/[id]/edit`. Both callers are Server Components, so it
+   *  never crosses a client boundary. */
+  assetHref: (assetId: string) => string;
 }) {
   const { counterparty, asset } = inquiry;
   const who = counterparty.companyName ?? counterparty.name;
@@ -53,15 +68,16 @@ export function InquiryCard({
 
         {asset ? (
           <Link
-            href={`/buyer/assets/${asset.id}`}
+            href={assetHref(asset.id)}
             className="inline-block text-sm text-primary underline-offset-4 hover:underline"
           >
             {asset.title}
           </Link>
         ) : (
           // `Inquiry.assetId` is nullable because a seller can approach a buyer
-          // off the back of their profile rather than a specific listing. That
-          // is a real state, not missing data, so it gets a label of its own.
+          // off the back of their profile rather than a specific listing — which
+          // is every inquiry a seller *sends*. A real state, not missing data,
+          // so it gets a label of its own.
           <Badge variant="outline">General enquiry — no listing</Badge>
         )}
 

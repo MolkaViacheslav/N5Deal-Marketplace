@@ -30,7 +30,7 @@ Companion to `CLAUDE.md` (architecture, conventions, data model, known pitfalls)
 - [x] `prisma/seed.ts`:
   - users created via `auth.api.signUpEmail()` (NOT `prisma.user.create` — see `CLAUDE.md` → Pitfalls), then patched with `role` / `emailVerified: true` — *changed: self-registration is now enforced off (`disableSignUp: true`), which closes `signUpEmail()` too, so the seed uses `auth.$context.internalAdapter` and sets `role`/`status` directly, no patch step*
   - ~15 assets across all 3 categories, ≥5 countries, ≥6 industries, wide price spread — *18 assets, 9 countries, 10 industries*
-  - ~8 buyer profiles with varied industries/regions/budgets so match scores land between 0 and 100, not all-or-nothing
+  - ~8 buyer profiles with varied industries/regions/budgets so match scores land between 0 and 100, not all-or-nothing — *7, for 8 buyers: Phase 7 dropped Silva's so the no-profile fallback is reachable*
 - [x] Run seed against the deployed DB too — *same Supabase instance backs both local dev and the Vercel deployment, so one seed run covers both*
 
 ### Phase 2 — Auth + role routing (1.5h)
@@ -68,7 +68,7 @@ Companion to `CLAUDE.md` (architecture, conventions, data model, known pitfalls)
 
 **Added, not in the original plan:** `deleteAsset` — a **soft** delete (`listingStatus: "REMOVED"`), surfaced as "Withdraw listing". `Inquiry.asset` is an optional relation with no explicit `onDelete`, so Prisma defaults to `SetNull`: a hard delete would silently rewrite history, turning a buyer's sent message into "General enquiry — no listing" long after they wrote it about a specific asset. No `AuditLog` row either — `lib/audit.ts` records *manager moderation*, and a REMOVE_ASSET entry with a seller as its actor would put ordinary housekeeping into the moderation table on `/manager`.
 
-**Left for a consistency pass after this merges** (the same kind the `ActionResult`/category-badge pass did after Phases 3/4/6, and deliberately not done here because it means editing files outside this phase's lane): fold `components/{buyer,seller}/inquiry-card.tsx` + `inquiry-list.tsx` into one `components/inquiry/` taking an `assetHref` prop, and lift the duplicated `MESSAGE_MIN`/`MESSAGE_MAX` out of the two `inquiry-schema.ts` files.
+**Left for a consistency pass after this merges** (the same kind the `ActionResult`/category-badge pass did after Phases 3/4/6, and deliberately not done here because it means editing files outside this phase's lane): fold `components/{buyer,seller}/inquiry-card.tsx` + `inquiry-list.tsx` into one `components/inquiry/` taking an `assetHref` prop, and lift the duplicated `MESSAGE_MIN`/`MESSAGE_MAX` out of the two `inquiry-schema.ts` files. — *done in Phase 7. The pass also found what the duplication had already cost: the two pages' `preview()` helpers had drifted, the seller's cutting by code point and the buyer's by UTF-16 code unit, so an emoji at the cut rendered as "�" on one screen and not the other. Both now call `previewMessage` from `lib/inquiry-message.ts`.*
 
 ### Phase 6 — Manager flows (1.5h)
 
@@ -81,11 +81,11 @@ Companion to `CLAUDE.md` (architecture, conventions, data model, known pitfalls)
 
 ### Phase 7 — Smart Matching (1.5h)
 
-- [ ] `lib/matching.ts` → `computeMatchScore(profile, asset): number` (pure)
-- [ ] Vitest + ~6 unit tests: full match, zero match, partial, missing budget bounds, empty arrays, price on the boundary
-- [ ] Match badge on asset cards (buyer side) and buyer cards (seller side)
-- [ ] "Recommended for you" section + "Best match" sort
-- [ ] No-profile fallback: hide badges, show "complete your profile" prompt
+- [x] `lib/matching.ts` → `computeMatchScore(profile, asset): number` (pure) — *no runtime imports at all: `MatchProfile`/`MatchAsset` are declared structurally, so a Prisma row satisfies them without a cast and the module needs neither the client nor the path alias. It also carries `bestMatchScore` (the seller's "best across my inventory") and `compareByMatchDesc` (the shared "score desc, unscored last" comparator), because both screens need the same two rules and one of them would otherwise be written twice.*
+- [x] Vitest + ~6 unit tests: full match, zero match, partial, missing budget bounds, empty arrays, price on the boundary — *15 tests. The baseline fixture is a **full** match, so every partial case is expressed by breaking exactly one thing. Added beyond the list: an inverted range (`budgetMin > budgetMax`, which nothing validates at the profile level) scores 0 for price, plus coverage of `bestMatchScore` and the comparator. Needed a `vitest.config.mts` — the repo had none, and `npm test` had never actually run anything. `.mts`, not `.ts`: without `"type": "module"` a `.ts` config loads as CommonJS and Vite warns (pitfall 15).*
+- [x] Match badge on asset cards (buyer side) and buyer cards (seller side) — *the badge itself moved out of `asset-card.tsx` into `components/match/match-badge.tsx`; two copies of the banding is how one of them gets corrected alone. Its `title` is a required prop, because the number is meaningless without saying what it was scored against and that sentence differs per role.*
+- [x] "Recommended for you" section + "Best match" sort — *the section renders only on the untouched view (`!hasActiveFilters && sort === DEFAULT_SORT`), out of the array already fetched — no second query. Once a buyer filters or sorts they have stated intent, and a top-3 strip would just repeat the first cards of the grid at them. Both "Best match" sorts are stable JS re-sorts layered on the SQL ordering (newest first), so equal scores stay newest-first rather than arbitrary.*
+- [x] No-profile fallback: hide badges, show "complete your profile" prompt — *and its mirror on the seller side: a seller with no listings has nothing to score buyers against, so they get "Publish a listing to see how well buyers match it" instead of silently missing badges. In both cases the "Best match" option is removed from the sort dropdown and a hand-typed `?sort=best-match` falls back to the default — the bar can never offer a sort the list is not applying. The buyer half was unreachable at first (the seed gave all 8 buyers a profile), so `prisma/seed.ts` now leaves `buyer.silva@demo.com` without one and names that account in its closing output — Zielińska keeps hers because it is the only profile with both budget bounds null. Re-seeded and verified; the seller half needs no seed change, since Silva's card now carries no badge and sorts last.*
 
 ### Phase 8 — AI search (1.5h)
 

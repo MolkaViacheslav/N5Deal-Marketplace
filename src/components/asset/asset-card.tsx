@@ -5,7 +5,7 @@ import {
   categoryFacts,
   type CategoryFieldsData,
 } from "@/components/asset/asset-category-fields";
-import { Badge } from "@/components/ui/badge";
+import { MatchBadge } from "@/components/match/match-badge";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatEur } from "@/lib/taxonomy";
@@ -44,7 +44,8 @@ export function AssetCard({
   listQuery = "",
 }: {
   asset: AssetCardData;
-  /** Phase 7 fills this in. Absent → no badge, never a "0% match". */
+  /** Absent → no badge at all, never a "0% match": a buyer with no profile has
+   *  nothing to be scored against, which is not the same as scoring nothing. */
   matchScore?: number;
   /**
    * The canonical query string of the list this card was rendered in, carried
@@ -70,7 +71,9 @@ export function AssetCard({
             businessStatus={asset.businessStatus}
             country={asset.country}
           />
-          {matchScore !== undefined && <MatchBadge score={matchScore} />}
+          {matchScore !== undefined && (
+            <MatchBadge score={matchScore} context="against your buyer profile" />
+          )}
         </div>
 
         <CardTitle className="mt-2">
@@ -133,37 +136,6 @@ export function AssetCard({
 }
 
 /**
- * Traffic-light banding on the match score.
- *
- * The theme has `success` and `destructive` tokens but no amber one, and
- * `globals.css` / `badge.tsx` are outside this agent's files — so the middle
- * band names Tailwind's amber directly instead of inventing a token. If a
- * `--warning` token is ever added, this is the only place that changes.
- */
-function MatchBadge({ score }: { score: number }) {
-  const tone =
-    score >= 70
-      ? { variant: "success" as const, className: undefined }
-      : score >= 40
-        ? {
-            variant: "secondary" as const,
-            className:
-              "bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
-          }
-        : { variant: "destructive" as const, className: undefined };
-
-  return (
-    <Badge
-      variant={tone.variant}
-      className={cn("shrink-0", tone.className)}
-      title={`${score}% match against your buyer profile`}
-    >
-      {score}% match
-    </Badge>
-  );
-}
-
-/**
  * Renders nothing at all when the value is absent — an empty `<dd>` labelled
  * "Employees" reads as missing data, a dropped row just reads as a shorter card.
  */
@@ -183,7 +155,17 @@ function Fact({
       <dt className="text-xs text-muted-foreground">{label}</dt>
       {/* Short scalars truncate to one line so the grid stays even; free text
           gets both columns and two lines, because half a sentence is worse
-          than no sentence. `title` carries the full value either way. */}
+          than no sentence.
+
+          `title` does NOT reach the user here, and the comment that said it did
+          was wrong: this card's stretched link covers the whole surface with an
+          `after:absolute` overlay, so the pointer never lands on the `<dd>`
+          (`MatchBadge` escapes it with `relative z-10`, which is not an option
+          for the fact grid — raising it would eat most of the card's click
+          area, which is the point of the stretched link). The attribute stays
+          because it costs nothing and becomes real the day this card is
+          rendered without the overlay; the honest fix for a truncated value is
+          the detail page, one click away. */}
       <dd
         className={cn("font-medium", wide ? "line-clamp-2" : "truncate")}
         title={String(value)}

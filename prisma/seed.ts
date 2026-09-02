@@ -237,15 +237,16 @@ async function main() {
       description:
         "Consumer lending platform seeking an EMI or PI licence in the Baltics to bring payments in-house.",
     },
-    {
-      userId: otherBuyers[5].id, // Silva
-      industries: ["Healthcare", "Real Estate"],
-      regions: ["Portugal", "Spain"],
-      budgetMin: 1_000_000,
-      budgetMax: 8_000_000,
-      description:
-        "Healthcare operator with an Iberian footprint; interested in clinics and the property they sit on.",
-    },
+    // No profile for otherBuyers[5] (Silva) — deliberately, do not "fix" this
+    // by adding one. Smart Matching has two fallbacks for a buyer who has said
+    // nothing about themselves: the "Complete your profile" prompt on
+    // /buyer/assets, and the no-badge / sorted-last treatment on /seller/buyers.
+    // With a profile on every seeded buyer, neither is reachable and a reviewer
+    // reading about them in the README has no way to see them. Silva is the one
+    // dropped because their mandate was the least load-bearing of the eight —
+    // Zielińska's below is the only profile with both budget bounds null, which
+    // is what demonstrates that an unstated budget scores 0 rather than acting
+    // as a wildcard.
     {
       userId: otherBuyers[6].id, // Zielińska
       industries: ["Logistics", "SaaS"],
@@ -750,6 +751,12 @@ async function main() {
   console.log("  buyer@demo.com    BUYER");
   console.log("  seller@demo.com   SELLER");
   console.log("  manager@demo.com  MANAGER");
+  // The one seeded buyer without a profile. Signing in as them is the only way
+  // to see the no-profile half of Smart Matching, and nothing on the sign-in
+  // page hints at it — the quick-login buttons cover the three above only.
+  console.log(
+    "\n  buyer.silva@demo.com has no BuyerProfile — sign in as them for the\n  'complete your profile' fallback on /buyer/assets."
+  );
 }
 
 main()

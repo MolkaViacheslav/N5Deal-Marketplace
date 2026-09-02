@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { InquiryList } from "@/components/buyer/inquiry-list";
-import type { InquiryCardData } from "@/components/buyer/inquiry-card";
+import {
+  InquiryList,
+  type InquiryEmptyCopy,
+} from "@/components/inquiry/inquiry-list";
+import type { InquiryCardData } from "@/components/inquiry/inquiry-card";
 import {
   Tabs,
   TabsContent,
@@ -11,6 +14,7 @@ import {
 } from "@/components/ui/tabs";
 import { requireRole } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { previewMessage } from "@/lib/inquiry-message";
 
 export const metadata: Metadata = { title: "Inquiries" };
 
@@ -29,14 +33,17 @@ function parseTab(raw: string | string[] | undefined): InquiryTab {
   return value === "received" ? "received" : "sent";
 }
 
-// Enough to tell two messages apart in a list without turning each row into a
-// wall of text; the full message is on the thread it belongs to.
-const PREVIEW_LENGTH = 100;
+// A buyer's listing link goes to the public detail page — the one route where
+// they can act on it.
+const assetHref = (assetId: string) => `/buyer/assets/${assetId}`;
 
-const preview = (message: string) =>
-  message.length <= PREVIEW_LENGTH
-    ? message
-    : `${message.slice(0, PREVIEW_LENGTH).trimEnd()}…`;
+const EMPTY_COPY: InquiryEmptyCopy = {
+  sentDescription:
+    "Open a listing you're interested in and message the seller directly.",
+  sentAction: { href: "/buyer/assets", label: "Browse listings" },
+  receivedDescription:
+    "When a seller reaches out about your profile, their message lands here.",
+};
 
 // Both directions share a shape, so both lists render through one component.
 const INQUIRY_SELECT = {
@@ -81,13 +88,13 @@ export default async function BuyerInquiriesPage({
   // crosses the RSC boundary for a row that only ever shows a preview.
   const sentCards: InquiryCardData[] = sent.map(({ to, message, ...rest }) => ({
     ...rest,
-    message: preview(message),
+    message: previewMessage(message),
     counterparty: to,
   }));
   const receivedCards: InquiryCardData[] = received.map(
     ({ from, message, ...rest }) => ({
       ...rest,
-      message: preview(message),
+      message: previewMessage(message),
       counterparty: from,
     })
   );
@@ -131,6 +138,8 @@ export default async function BuyerInquiriesPage({
           <InquiryList
             inquiries={activeTab === "sent" ? sentCards : receivedCards}
             direction={activeTab}
+            assetHref={assetHref}
+            empty={EMPTY_COPY}
           />
         </TabsContent>
       </Tabs>

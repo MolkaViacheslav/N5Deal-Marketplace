@@ -8,11 +8,11 @@ Persistent context for Claude Code in this repo. Read it before making changes. 
 
 ## Where this stands
 
-Phases 0–6 are done; **Phase 7 (smart matching) is next**, then 8–10. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why.
+Phases 0–7 are done; **Phase 8 (AI natural-language search) is next**, then 9–10. `plan.md` carries the live checkboxes — it is the source of truth for what is finished, and items done differently from the original plan carry an inline italic note explaining why.
 
 Phases 3–4 (buyer) and 6 (manager) were built in parallel in two worktrees off the same base and merged with `--no-ff`. They touched disjoint files apart from `plan.md`, which merged cleanly. If that pattern is repeated, keep it that way: one phase per worktree, and expect `plan.md` to be the only shared file.
 
-What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, the signed-in shell (header, per-role nav, role badge, sign-out), the whole Buyer section (browse with URL-driven filters, listing detail, profile, inquiries), the whole Manager section (overview + audit log, participants, asset moderation) and the whole Seller section (own listings, the asset form, buyer browse, buyer profile + contact, inquiries).
+What exists: the Better Auth + Prisma wiring, the full schema and seed, sign-in at `/sign-in`, `requireRole()` guards on all three role layouts, `/suspended`, the signed-in shell (header, per-role nav, role badge, sign-out), the whole Buyer section (browse with URL-driven filters, listing detail, profile, inquiries), the whole Manager section (overview + audit log, participants, asset moderation), the whole Seller section (own listings, the asset form, buyer browse, buyer profile + contact, inquiries) and smart matching on both browse screens (badges, "Recommended for you", "Best match" sorts).
 
 All nine placeholder routes are now real screens; `PhasePlaceholder` itself is unused and can go whenever something else touches `components/layout/`. `src/app/page.tsx` is still a throwaway proof page until Phase 9.
 
@@ -20,13 +20,21 @@ Phase 5 additions worth knowing before touching the seller side:
 
 - `src/app/seller/assets/schema.ts` — `assetSchema` (the discriminated union) **and** `sanitizeByCategory()`, which returns every column a seller controls with the other categories' fields explicitly `null`. Both `createAsset` and `updateAsset` write through it, so they cannot drift. It deliberately carries no `sellerId` and no `listingStatus`: ownership comes from the session, and moderation state is the manager's — that absence is what stops a seller editing a suspended listing back into circulation.
 - A seller's "Withdraw" is a **soft** delete (`listingStatus: "REMOVED"`) and writes **no** `AuditLog` row. `Inquiry.asset` has no explicit `onDelete`, so Prisma would `SetNull` and rewrite a buyer's message history; and `lib/audit.ts` is for manager moderation, not seller housekeeping.
-- `components/seller/inquiry-card.tsx` is a near-twin of the buyer's, differing only in link targets. Merging the two into `components/inquiry/` with an `assetHref` prop is the outstanding consistency pass — see the note at the end of Phase 5 in `plan.md`.
+Phase 7 additions worth knowing:
+
+- `src/lib/matching.ts` is the **only** place the scoring rules live, and it imports nothing — not Prisma, not React, not `@/…`. Its input types are structural, so a Prisma row satisfies them directly. Anything that needs a score (a page, a future API route, a test) calls it; nothing re-implements a threshold or a comparison.
+- Both "Best match" sorts are applied in JS *after* the query, layered on the SQL ordering rather than replacing it — `Array.prototype.sort` is stable, so equal scores stay newest-first. A screen that cannot score (buyer with no profile, seller with no listings) removes the option from its bar **and** falls back to the default sort server-side; the two must stay in step.
+- An absent score is never rendered as `0%`. `undefined` means "nothing to score against", which the cards, the comparator and the two prompt banners all treat as a distinct state.
+- **A `title` attribute inside `AssetCard` or `BuyerCard` is dead by default.** Both are stretched-link cards (`Card` is `relative`, the title's `<Link>` carries `after:absolute after:inset-0`), and a positioned overlay always paints over static content — so the pointer lands on the link, not on the element carrying the tooltip. Verified with `document.elementFromPoint`, not inferred. `MatchBadge` opts out with `relative z-10`, at the cost of its own area as a click target; the `Fact` grid deliberately does not, because raising it would eat the card. Don't add a hover-only affordance to these cards without checking which of the two you are doing.
 
 Reusable pieces the seller screens should not rebuild:
 
 - `src/components/asset/` — `AssetBadges` (category / business status / country), `AssetCard`, `categoryFacts()`. Role-neutral by design: the manager's asset table renders the *same* `CategoryBadge` as buyer browse. Don't hand-roll a local `<Badge>` for a category or a business status.
 - `src/lib/action-result.ts` — the `ActionResult` union **every** Server Action returns, buyer and manager alike. Failures are values, not throws (Next redacts thrown messages in a production build). There is one spelling of it; don't add a second.
 - `src/components/moderation/status-badge.tsx` — `ModerationStatusBadge` for `UserStatus` **and** `ListingStatus`; they are separate enums with identical members and one look.
+- `src/components/match/match-badge.tsx` — `MatchBadge`, the one place a score becomes a colour, for the buyer's asset cards and the seller's buyer cards alike.
+- `src/components/inquiry/` — one `InquiryCard` + `InquiryList` for both roles, taking an `assetHref` function and the empty-state copy as props. They differ in where a listing link points and in two sentences; everything else was duplicated until Phase 7 merged them.
+- `src/lib/inquiry-message.ts` — `MESSAGE_MIN`/`MESSAGE_MAX`, the shared `messageField` both inquiry schemas validate with, and `previewMessage()` (cuts by code point, so an emoji at the boundary doesn't become "�").
 - `src/lib/audit.ts` — `logAction()`, called inside the same `$transaction` as the change it records.
 - `src/lib/taxonomy.ts` — the closed vocabularies *and* the display formatters: `formatEur`, `formatEurCompact`, `formatDate`, `formatDateTime`. Never build an `Intl` formatter at a call site — dates in particular must stay pinned to one time zone, or a Vercel function in another region renders the same timestamp a day apart on two screens.
 - `src/lib/search-params.ts` — `firstValue` / `oneOf` / `searchText`. Every list screen reads the query string through these: a repeated key is one value, an unknown value is dropped rather than rejected, free text is capped.
@@ -461,9 +469,13 @@ Deterministic and rule-based, so it produces identical results on every review r
 
 Missing criteria (empty array, null budget bound) score 0 for that component rather than being treated as a wildcard — an empty profile must not read as a 100% match. An open-ended bound (`budgetMax` null) counts as satisfied on that side only.
 
-Surfaced as: a % badge on asset cards in `/buyer/assets`, a "Recommended for you" section, the reciprocal view on `/seller/buyers`, and a "Best match" sort on both.
+Surfaced as: a % badge on asset cards in `/buyer/assets`, a "Recommended for you" section, the reciprocal view on `/seller/buyers` (a buyer's score is the **best** they reach against any of that seller's listings, whatever its `listingStatus`), and a "Best match" sort on both.
 
-**No-profile fallback:** a Buyer without a `BuyerProfile` sees no badges, no "Recommended" section, and a prompt linking to `/buyer/profile`.
+"Recommended for you" renders only on the untouched view — no active filter, default sort — from the array already fetched, so it costs no extra query. Once a buyer filters or sorts, they have said what they want and the strip would only repeat the top of the grid.
+
+**No-profile fallback:** a Buyer without a `BuyerProfile` sees no badges, no "Recommended" section, and a prompt linking to `/buyer/profile`. **Its mirror:** a Seller with no listings has nothing to score buyers against, so they see no badges and a prompt linking to `/seller/assets/new`. In both cases the bar drops the "Best match" option and the page drops a hand-typed `?sort=best-match` back to the default.
+
+Tests live in `src/lib/matching.test.ts` (`npm test`); `vitest.config.mts` exists only to give them the `@/` alias.
 
 ## AI feature — natural-language search
 
@@ -513,9 +525,11 @@ Module resolution is relative to the script's own path, not `cwd` — a driver s
 
 ## Seed data
 
-As built: 12 users (1 manager, 3 sellers, 8 buyers), 18 assets across all 3 categories / 9 countries / 10 industries with a wide price spread, 8 buyer profiles, 4 inquiries and 1 audit-log row — enough that Smart Matching shows a visible spread of scores rather than all 100% or all 0%. Users must be created via `auth.$context.internalAdapter`, never `prisma.user.create()` (pitfall 2).
+As built: 12 users (1 manager, 3 sellers, 8 buyers), 18 assets across all 3 categories / 9 countries / 10 industries with a wide price spread, 7 buyer profiles, 4 inquiries and 1 audit-log row — enough that Smart Matching shows a visible spread of scores rather than all 100% or all 0%. Users must be created via `auth.$context.internalAdapter`, never `prisma.user.create()` (pitfall 2).
 
-Two things in the seed exist for reasons that are not obvious from reading it:
+Three things in the seed exist for reasons that are not obvious from reading it:
+
+- **Seven profiles for eight buyers.** `buyer.silva@demo.com` has none, on purpose — that gap is the only way to reach either half of the no-profile fallback (the prompt on `/buyer/assets`, and the no-badge / sorted-last treatment on `/seller/buyers`). Silva was chosen because their mandate was the least load-bearing: Zielińska's is the only profile with both budget bounds `null`, which is what demonstrates that an unstated budget scores 0 instead of acting as a wildcard. The seed's closing output names the account, since the sign-in page's quick-login buttons cover only the three main demo logins.
 
 - `assertTaxonomy()` runs before **any** insert and throws if a seeded country/industry falls outside `src/lib/taxonomy.ts`. Such a row would exist but be unreachable through the filter bar, which reads as a broken filter rather than bad data.
 - Every row gets an explicit, spread-out `createdAt`. Left to `now()` they all land on the same millisecond and "latest activity" ordering on `/manager` comes back arbitrary.

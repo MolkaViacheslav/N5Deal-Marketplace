@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { SellerInquiryList } from "@/components/seller/inquiry-list";
-import type { SellerInquiryCardData } from "@/components/seller/inquiry-card";
+import {
+  InquiryList,
+  type InquiryEmptyCopy,
+} from "@/components/inquiry/inquiry-list";
+import type { InquiryCardData } from "@/components/inquiry/inquiry-card";
 import {
   Tabs,
   TabsContent,
@@ -11,6 +14,7 @@ import {
 } from "@/components/ui/tabs";
 import { requireRole } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
+import { previewMessage } from "@/lib/inquiry-message";
 
 export const metadata: Metadata = { title: "Inquiries" };
 
@@ -36,20 +40,16 @@ function parseTab(raw: string | string[] | undefined): InquiryTab {
   return value === "sent" ? "sent" : "received";
 }
 
-// Enough to tell two messages apart in a list without turning each row into a
-// wall of text.
-const PREVIEW_LENGTH = 100;
+// A seller's own listing goes to their edit screen: `/buyer/assets/[id]` is a
+// route `requireRole("BUYER")` would bounce them out of.
+const assetHref = (assetId: string) => `/seller/assets/${assetId}/edit`;
 
-// Cut by code point, not by `slice()`. A JS string indexes UTF-16 code units,
-// so slicing at a fixed offset can land in the middle of a surrogate pair and
-// leave a lone half behind — an emoji in a buyer's message turns the end of the
-// preview into "�". `Array.from` iterates code points, so the cut always falls
-// between whole characters.
-const preview = (message: string) => {
-  const chars = Array.from(message);
-  return chars.length <= PREVIEW_LENGTH
-    ? message
-    : `${chars.slice(0, PREVIEW_LENGTH).join("").trimEnd()}…`;
+const EMPTY_COPY: InquiryEmptyCopy = {
+  sentDescription:
+    "Find a buyer whose mandate fits what you're selling and message them directly.",
+  sentAction: { href: "/seller/buyers", label: "Browse buyers" },
+  receivedDescription:
+    "When a buyer asks about one of your listings, their message lands here.",
 };
 
 // Both directions share a shape, so both lists render through one component.
@@ -91,20 +91,18 @@ export default async function SellerInquiriesPage({
 
   // Truncated here rather than in the card, so the untruncated message never
   // crosses the RSC boundary for a row that only ever shows a preview.
-  const receivedCards: SellerInquiryCardData[] = received.map(
+  const receivedCards: InquiryCardData[] = received.map(
     ({ from, message, ...rest }) => ({
       ...rest,
-      message: preview(message),
+      message: previewMessage(message),
       counterparty: from,
     })
   );
-  const sentCards: SellerInquiryCardData[] = sent.map(
-    ({ to, message, ...rest }) => ({
-      ...rest,
-      message: preview(message),
-      counterparty: to,
-    })
-  );
+  const sentCards: InquiryCardData[] = sent.map(({ to, message, ...rest }) => ({
+    ...rest,
+    message: previewMessage(message),
+    counterparty: to,
+  }));
 
   const counts: Record<InquiryTab, number> = {
     received: receivedCards.length,
@@ -141,9 +139,11 @@ export default async function SellerInquiriesPage({
         </TabsList>
 
         <TabsContent value={activeTab} className="mt-4">
-          <SellerInquiryList
+          <InquiryList
             inquiries={activeTab === "sent" ? sentCards : receivedCards}
             direction={activeTab}
+            assetHref={assetHref}
+            empty={EMPTY_COPY}
           />
         </TabsContent>
       </Tabs>

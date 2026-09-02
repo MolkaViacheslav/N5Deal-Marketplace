@@ -13,7 +13,9 @@ import {
 import { INDUSTRIES, REGIONS } from "@/lib/taxonomy";
 import { useUrlFilters } from "@/lib/use-url-filters";
 import {
+  DEFAULT_SORT,
   positiveInt,
+  SORT_OPTIONS,
   type SellerBuyerFilters,
 } from "@/app/seller/buyers/filters";
 
@@ -27,7 +29,16 @@ const SEARCH_DEBOUNCE_MS = 300;
  * see `lib/use-url-filters.ts` for why every write is built on the last URL this
  * component issued rather than on `useSearchParams()`.
  */
-export function BuyersFilters({ filters }: { filters: SellerBuyerFilters }) {
+export function BuyersFilters({
+  filters,
+  hasListings,
+}: {
+  filters: SellerBuyerFilters;
+  /** A seller with nothing published has nothing to score buyers against, so
+   *  "Best match" is not offered — the mirror of the buyer bar hiding it until
+   *  there is a profile. */
+  hasListings: boolean;
+}) {
   const { commit, isPending } = useUrlFilters();
 
   const searchRef = useRef<HTMLInputElement>(null);
@@ -151,6 +162,28 @@ export function BuyersFilters({ filters }: { filters: SellerBuyerFilters }) {
         aria-label="Budget covers this amount"
         className="max-w-44"
       />
+
+      {hasListings && (
+        <Select
+          value={filters.sort}
+          // The default is what an absent `sort` already means, so writing it
+          // out only adds noise to a shared link.
+          onValueChange={(value) =>
+            commit({ sort: value === DEFAULT_SORT ? null : value })
+          }
+        >
+          <SelectTrigger aria-label="Sort buyers">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
     </div>
   );
 }
