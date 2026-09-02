@@ -45,17 +45,18 @@ Companion to `CLAUDE.md` (architecture, conventions, data model, known pitfalls)
 
 ### Phase 3 — Buyer browse (the money screen) (3.5h)
 
-- [ ] `components/asset/asset-card.tsx` — badges (category, business status, country), field grid, price, tags. Match the reference layout.
-- [ ] `/buyer/assets` — server-side list with filters via `searchParams`: search, country, category, industry, price range
-- [ ] Filter bar as a Client Component writing to `searchParams` (URL is the state → survives refresh, shareable, no client store)
-- [ ] `/buyer/assets/[id]` — detail page, category-specific block, seller info (`await params`)
-- [ ] Empty state when filters match nothing
+- [x] `components/asset/asset-card.tsx` — badges (category, business status, country), field grid, price, tags. Match the reference layout. — *the badge row and the category-specific field list are extracted (`asset-badges.tsx`, `asset-category-fields.ts`) so the card and the detail page cannot drift into showing different sets; the Phase 5–6 seller/manager screens reuse them too. `MatchBadge` is in the card already but only renders when Phase 7 passes a `matchScore` — absent means no badge, never "0%".*
+- [x] `/buyer/assets` — server-side list with filters via `searchParams`: search, country, category, industry, price range — *explicit `select` rather than whole rows: `description` is up to 2000 characters per card and is never rendered here. No `take`/pagination — 18 seeded rows; called out in the README as a deliberate cut.*
+- [x] Filter bar as a Client Component writing to `searchParams` (URL is the state → survives refresh, shareable, no client store) — *URL⇄query translation lives in `filters.ts` and every value is validated against `taxonomy.ts`, dropped rather than rejected. The bar renders from the same parsed object the list uses, so it can never display a filter that isn't applied — including the price inputs, which run the parser's own rule before writing. Writes build on the last URL this component issued, not on `useSearchParams()`: `router.replace` runs in a transition, so the hook still returns the pre-navigation params and two quick changes would drop the first.*
+- [x] `/buyer/assets/[id]` — detail page, category-specific block, seller info (`await params`) — *the browse filters ride along on the detail URL so "Back to listings" returns to the list the buyer actually had; re-parsed on arrival, so the link can't carry a hand-edited filter back. `findVisibleAsset` is wrapped in `cache()` so the page body and `generateMetadata` agree and a moderated listing can't leak its title through the tab.*
+- [x] Empty state when filters match nothing — *two states, not one: "no listings match these filters" (has an action) vs "no listings yet" (doesn't).*
 
 ### Phase 4 — Buyer profile + inquiries (2h)
 
-- [ ] `/buyer/profile` — create/edit `BuyerProfile` (industries, regions, budget, description)
-- [ ] "Contact Seller" dialog on the detail page → `createInquiry` Server Action
-- [ ] `/buyer/inquiries` — Sent / Received tabs
+- [x] `/buyer/profile` — create/edit `BuyerProfile` (industries, regions, budget, description) — *one screen for create and edit, since the action upserts. At least one industry or region is required: an all-empty profile would score 0 on every listing in Phase 7, which is a worse answer than the "complete your profile" prompt it would replace.*
+- [x] "Contact Seller" dialog on the detail page → `createInquiry` Server Action — *`toUserId` is read off the asset and `fromUserId` off the session, so the payload names a listing, never a person; the asset is re-fetched with the same visibility rule in case it was moderated away since the page rendered.*
+- [x] `/buyer/inquiries` — Sent / Received tabs — *tabs are `Link`s reading `?tab=`, not Radix client state, so the tab survives a refresh and is linkable. Each card shows the counterparty's email: an Inquiry is one message and not a thread, so that address is the only way the conversation continues.*
+- [x] **Added, not in the original plan:** `<Toaster />` mounted in the root layout. `sonner` was installed in Phase 0 but never rendered, so every `toast()` in this phase was a no-op. Phase 9 still owns the *coverage* of toasts across the app; this is just the renderer that makes them work at all.
 
 ### Phase 5 — Seller flows (3h)
 
@@ -92,7 +93,7 @@ Companion to `CLAUDE.md` (architecture, conventions, data model, known pitfalls)
 ### Phase 9 — Polish (2h)
 
 - [ ] Loading states (`loading.tsx` + skeletons on the two list pages)
-- [ ] Toasts on every mutation; `revalidatePath` after every Server Action
+- [ ] Toasts on every mutation; `revalidatePath` after every Server Action — *the `<Toaster />` itself was mounted in Phase 4, because the code there already called `toast()`; what is left here is coverage across the remaining mutations*
 - [ ] Empty states everywhere (no assets, no inquiries, no profile)
 - [ ] `error.tsx` + `not-found.tsx`
 - [ ] Responsive pass (cards → single column, tables → horizontal scroll)
