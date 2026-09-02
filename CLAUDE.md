@@ -20,8 +20,12 @@ Reusable pieces the seller screens should not rebuild:
 
 - `src/components/asset/` — `AssetBadges` (category / business status / country), `AssetCard`, `categoryFacts()`. Role-neutral by design: the manager's asset table renders the *same* `CategoryBadge` as buyer browse. Don't hand-roll a local `<Badge>` for a category or a business status.
 - `src/lib/action-result.ts` — the `ActionResult` union **every** Server Action returns, buyer and manager alike. Failures are values, not throws (Next redacts thrown messages in a production build). There is one spelling of it; don't add a second.
+- `src/components/moderation/status-badge.tsx` — `ModerationStatusBadge` for `UserStatus` **and** `ListingStatus`; they are separate enums with identical members and one look.
 - `src/lib/audit.ts` — `logAction()`, called inside the same `$transaction` as the change it records.
-- `src/app/buyer/assets/filters.ts` — the pattern for `searchParams` ⇄ query translation: validate against `taxonomy.ts`, drop what doesn't fit, render the controls from the parsed object so a bar can never show a filter the list isn't applying, and build each URL write on the last URL the component itself issued (`useSearchParams()` still returns the pre-navigation params until the transition commits, so two quick changes otherwise drop the first).
+- `src/lib/taxonomy.ts` — the closed vocabularies *and* the display formatters: `formatEur`, `formatEurCompact`, `formatDate`, `formatDateTime`. Never build an `Intl` formatter at a call site — dates in particular must stay pinned to one time zone, or a Vercel function in another region renders the same timestamp a day apart on two screens.
+- `src/lib/search-params.ts` — `firstValue` / `oneOf` / `searchText`. Every list screen reads the query string through these: a repeated key is one value, an unknown value is dropped rather than rejected, free text is capped.
+- `src/lib/use-url-filters.ts` — the URL-writing half of every filter bar. It exists because the naive version is wrong in two ways that are not visible in review: a write must be built on the last URL *the bar itself* issued (`useSearchParams()` returns the pre-navigation params until the transition commits, so two quick changes drop the first), and a debounced field must `replace`, not `push`.
+- `src/app/{buyer/assets,manager/assets,manager/participants}/filters.ts` — one `filters.ts` per list screen: `parse*Filters` + `build*Where`. The page stays thin, the *parsed* object drives both the query and the controls, and the bar therefore cannot show a filter the list isn't applying.
 
 ## Operations
 
