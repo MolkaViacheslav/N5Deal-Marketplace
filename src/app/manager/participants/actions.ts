@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import type { ActionResult } from "@/lib/action-result";
 import { requireRole } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { logAction } from "@/lib/audit";
@@ -29,8 +30,6 @@ const moderateUserSchema = z.object({
 
 type ModerateUserInput = z.infer<typeof moderateUserSchema>;
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
-
 class GuardError extends Error {}
 
 function revalidateManagerPaths() {
@@ -43,20 +42,20 @@ async function runGuarded(transaction: () => Promise<void>): Promise<ActionResul
   try {
     await transaction();
   } catch (err) {
-    if (err instanceof GuardError) return { ok: false, error: err.message };
+    if (err instanceof GuardError) return { success: false, error: err.message };
     throw err; // genuinely unexpected — let Next's own redaction handle it
   }
   revalidateManagerPaths();
-  return { ok: true };
+  return { success: true };
 }
 
 export async function suspendUser(input: ModerateUserInput): Promise<ActionResult> {
   const manager = await requireRole("MANAGER");
   const parsed = moderateUserSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  if (!parsed.success) return { success: false, error: "Invalid request." };
   const { userId, reason } = parsed.data;
 
-  if (userId === manager.id) return { ok: false, error: "Cannot modify your own account." };
+  if (userId === manager.id) return { success: false, error: "Cannot modify your own account." };
 
   return runGuarded(async () => {
     await prisma.$transaction(async (tx) => {
@@ -99,10 +98,10 @@ export async function suspendUser(input: ModerateUserInput): Promise<ActionResul
 export async function removeUser(input: ModerateUserInput): Promise<ActionResult> {
   const manager = await requireRole("MANAGER");
   const parsed = moderateUserSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  if (!parsed.success) return { success: false, error: "Invalid request." };
   const { userId, reason } = parsed.data;
 
-  if (userId === manager.id) return { ok: false, error: "Cannot modify your own account." };
+  if (userId === manager.id) return { success: false, error: "Cannot modify your own account." };
 
   return runGuarded(async () => {
     await prisma.$transaction(async (tx) => {
@@ -141,10 +140,10 @@ export async function removeUser(input: ModerateUserInput): Promise<ActionResult
 export async function reactivateUser(input: ModerateUserInput): Promise<ActionResult> {
   const manager = await requireRole("MANAGER");
   const parsed = moderateUserSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  if (!parsed.success) return { success: false, error: "Invalid request." };
   const { userId, reason } = parsed.data;
 
-  if (userId === manager.id) return { ok: false, error: "Cannot modify your own account." };
+  if (userId === manager.id) return { success: false, error: "Cannot modify your own account." };
 
   return runGuarded(async () => {
     await prisma.$transaction(async (tx) => {

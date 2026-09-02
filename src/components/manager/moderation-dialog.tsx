@@ -14,12 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
-
-// Structurally identical to the `ActionResult` exported by
-// app/manager/{participants,assets}/actions.ts — not imported from either,
-// since either would tie this shared component to one route. TS's
-// structural typing makes both actions' return values assignable here as-is.
-type ActionResult = { ok: true } | { ok: false; error: string };
+import type { ActionResult } from "@/lib/action-result";
 
 type ModerationDialogProps = {
   open: boolean;
@@ -67,7 +62,7 @@ export function ModerationDialog({
     startTransition(async () => {
       try {
         const result = await onConfirm(reason.trim() || undefined);
-        if (!result.ok) {
+        if (!result.success) {
           setError(result.error);
           toast.error(result.error);
           return;

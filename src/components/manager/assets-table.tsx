@@ -7,8 +7,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge, type badgeVariants } from "@/components/ui/badge";
+import { CategoryBadge } from "@/components/asset/asset-badges";
 import { AssetRowActions } from "@/components/manager/asset-row-actions";
-import { categoryLabel, formatEur } from "@/lib/taxonomy";
+import { formatEur } from "@/lib/taxonomy";
 import type { VariantProps } from "class-variance-authority";
 import type { AssetCategory, ListingStatus } from "@/generated/prisma/enums";
 
@@ -65,8 +66,12 @@ export function AssetsTable({ assets }: { assets: AssetRow[] }) {
           {assets.map((asset) => (
             <TableRow key={asset.id}>
               <TableCell className="font-medium">{asset.title}</TableCell>
+              {/* The same badge buyer browse renders, not a local lookalike:
+                  a category is one thing across the app, and two variants of
+                  it is how the manager's view starts drifting from what a
+                  buyer actually sees. */}
               <TableCell>
-                <Badge variant="outline">{categoryLabel(asset.category)}</Badge>
+                <CategoryBadge category={asset.category} />
               </TableCell>
               <TableCell>{asset.country}</TableCell>
               <TableCell>{asset.industry}</TableCell>

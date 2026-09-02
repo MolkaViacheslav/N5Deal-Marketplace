@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import type { ActionResult } from "@/lib/action-result";
 import { requireRole } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { logAction } from "@/lib/audit";
@@ -24,8 +25,6 @@ const moderateAssetSchema = z.object({
 
 type ModerateAssetInput = z.infer<typeof moderateAssetSchema>;
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
-
 class GuardError extends Error {}
 
 function revalidateManagerPaths() {
@@ -37,17 +36,17 @@ async function runGuarded(transaction: () => Promise<void>): Promise<ActionResul
   try {
     await transaction();
   } catch (err) {
-    if (err instanceof GuardError) return { ok: false, error: err.message };
+    if (err instanceof GuardError) return { success: false, error: err.message };
     throw err;
   }
   revalidateManagerPaths();
-  return { ok: true };
+  return { success: true };
 }
 
 export async function suspendAsset(input: ModerateAssetInput): Promise<ActionResult> {
   const manager = await requireRole("MANAGER");
   const parsed = moderateAssetSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  if (!parsed.success) return { success: false, error: "Invalid request." };
   const { assetId, reason } = parsed.data;
 
   return runGuarded(async () => {
@@ -74,7 +73,7 @@ export async function suspendAsset(input: ModerateAssetInput): Promise<ActionRes
 export async function removeAsset(input: ModerateAssetInput): Promise<ActionResult> {
   const manager = await requireRole("MANAGER");
   const parsed = moderateAssetSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  if (!parsed.success) return { success: false, error: "Invalid request." };
   const { assetId, reason } = parsed.data;
 
   return runGuarded(async () => {
