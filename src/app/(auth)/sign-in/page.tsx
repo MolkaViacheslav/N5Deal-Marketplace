@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth-guard";
 import { homeFor, safeNextPath } from "@/lib/routes";
 import { SignInForm } from "@/components/auth/sign-in-form";
+import { BrandMark } from "@/components/layout/brand-mark";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -29,7 +30,8 @@ export default async function SignInPage({
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="text-xl font-semibold tracking-tight">
-            N5<span className="text-muted-foreground">Deal</span>
+            <BrandMark />
+            <span className="text-muted-foreground">Deal</span>
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
             Marketplace for M&amp;A opportunities and financial assets

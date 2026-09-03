@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { BrandMark } from "@/components/layout/brand-mark";
 import { MainNav } from "@/components/layout/main-nav";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { navItemsFor, ROLE_LABEL } from "@/lib/nav-items";
@@ -28,7 +29,8 @@ export function AppShell({ role, name, email, children }: AppShellProps) {
             href={homeFor(role)}
             className="shrink-0 text-base font-semibold tracking-tight"
           >
-            N5<span className="text-muted-foreground">Deal</span>
+            <BrandMark />
+            <span className="text-muted-foreground">Deal</span>
           </Link>
 
           <div className="hidden md:block">
