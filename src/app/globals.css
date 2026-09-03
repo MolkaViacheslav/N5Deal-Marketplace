@@ -63,7 +63,10 @@
      reads as related but distinct, and every surface stays true neutral gray
      (chroma 0) rather than their faint blue-tinted grays — one saturated brand
      color reads cleaner than tinting everything. See CLAUDE.md → Theme. */
-  --background: oklch(1 0 0);
+  /* A hair off pure white (chroma 0.008, same 258 hue as --primary) so the
+     page canvas itself reads as a surface — cards (`--card`, still pure
+     white) then sit visibly *on* it instead of blending into it. */
+  --background: oklch(0.98 0.008 258);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -103,10 +106,15 @@
      "everything is white" fix. Two soft, wide ellipses well below full
      opacity, fading to nothing by mid-page, so it reads as ambient light
      behind the content rather than a pattern competing with it. Cards stay
-     opaque `--card` on top, so contrast is untouched. */
+     opaque `--card` on top, so contrast is untouched.
+
+     Centers sit just inside the viewport (y ~0%, not -12%) — a radial-gradient
+     centered above the fold mostly clips off-screen and reads as nothing at
+     first paint, which is exactly the "still too white" complaint this was
+     meant to fix. */
   --body-glow:
-    radial-gradient(ellipse 75% 50% at 10% -12%, oklch(0.75 0.14 258 / 20%), transparent 62%),
-    radial-gradient(ellipse 60% 40% at 100% -10%, oklch(0.72 0.12 300 / 14%), transparent 58%);
+    radial-gradient(ellipse 80% 55% at 12% -2%, oklch(0.75 0.14 258 / 30%), transparent 62%),
+    radial-gradient(ellipse 65% 45% at 100% 0%, oklch(0.72 0.12 300 / 22%), transparent 58%);
 }
 
 .dark {
@@ -147,8 +155,8 @@
   --sidebar-ring: oklch(0.556 0 0);
   /* Same glow, richer since it sits against near-black rather than white. */
   --body-glow:
-    radial-gradient(ellipse 75% 50% at 10% -12%, oklch(0.45 0.18 258 / 30%), transparent 62%),
-    radial-gradient(ellipse 60% 40% at 100% -10%, oklch(0.4 0.16 300 / 22%), transparent 58%);
+    radial-gradient(ellipse 80% 55% at 12% -2%, oklch(0.45 0.18 258 / 38%), transparent 62%),
+    radial-gradient(ellipse 65% 45% at 100% 0%, oklch(0.4 0.16 300 / 28%), transparent 58%);
 }
 
 @layer base {

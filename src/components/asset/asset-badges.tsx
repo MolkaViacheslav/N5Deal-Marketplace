@@ -20,8 +20,26 @@ export function BusinessStatusBadge({ status }: { status: BusinessStatus }) {
   );
 }
 
+// The one un-gray badge on a mostly-neutral card, so the three listing
+// shapes are tellable apart at a glance in a grid of them. License reuses
+// `--primary` (regulatory/official reads as the brand blue already); the
+// other two name Tailwind colors directly rather than inventing tokens for a
+// one-component need — same call `MatchBadge` makes for its amber band.
+// Violet for Stake doubles as a quiet callback to `BrandMark`'s gradient,
+// which drifts into the same hue.
+const CATEGORY_STYLE = {
+  LICENSE: "bg-primary/10 text-primary",
+  OPERATING_BUSINESS:
+    "bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
+  STAKE: "bg-violet-500/15 text-violet-700 dark:bg-violet-500/20 dark:text-violet-400",
+} as const satisfies Record<AssetCategory, string>;
+
 export function CategoryBadge({ category }: { category: AssetCategory }) {
-  return <Badge variant="secondary">{categoryLabel(category)}</Badge>;
+  return (
+    <Badge variant="secondary" className={CATEGORY_STYLE[category]}>
+      {categoryLabel(category)}
+    </Badge>
+  );
 }
 
 export function CountryBadge({ country }: { country: string }) {
